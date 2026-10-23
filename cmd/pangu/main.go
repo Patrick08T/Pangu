@@ -5,7 +5,9 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/Patrick08T/Pangu/internal/identity"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -14,12 +16,16 @@ import (
 
 	"github.com/Patrick08T/Pangu/internal/agent"
 	"github.com/Patrick08T/Pangu/internal/api"
+	"github.com/Patrick08T/Pangu/internal/audit"
+	"github.com/Patrick08T/Pangu/internal/database"
 	"github.com/Patrick08T/Pangu/internal/scheduler"
+	"github.com/Patrick08T/Pangu/web"
 	hatchet "github.com/hatchet-dev/hatchet/sdks/go"
 )
 
 func main() {
-	mode := flag.String("mode", "all", "运行模式：all、api 或 worker")
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, nil)))
+	mode := flag.String("mode", "all", "运行模式：all、api、worker 或 migrate")
 	port := flag.Int("port", 8080, "API 回环监听端口")
 	flag.Parse()
 	if err := run(*mode, *port); err != nil {
@@ -29,18 +35,29 @@ func main() {
 }
 
 func run(mode string, port int) error {
-	if mode != "all" && mode != "api" && mode != "worker" {
+	if mode != "all" && mode != "api" && mode != "worker" && mode != "migrate" {
 		return fmt.Errorf("无效运行模式 %q", mode)
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+	if mode == "migrate" {
+		return database.Migrate(ctx)
+	}
 	client, err := hatchet.NewClient()
 	if err != nil {
 		return fmt.Errorf("连接 Hatchet: %w", err)
 	}
 	defer func() { _ = client.Close(context.Background()) }()
+	if err := database.Check(ctx); err != nil {
+		return err
+	}
+	backend := scheduler.NewBackend(client)
+	go audit.Maintain(ctx, backend.Namespace())
+	go backend.Maintain(ctx)
+	go backend.MaintainHistory(ctx)
 	if mode != "api" {
-		worker, err := scheduler.NewWorker(client, agent.Execute)
+		go backend.MaintainRetention(ctx)
+		worker, err := scheduler.NewWorker(client, agent.Execute, agent.Preflight)
 		if err != nil {
 			return err
 		}
@@ -55,7 +72,7 @@ func run(mode string, port int) error {
 		<-ctx.Done()
 		return nil
 	}
-	return serve(ctx, api.New(scheduler.NewBackend(client)), port)
+	return serve(ctx, web.Handler(api.New(backend, identity.Service{Namespace: backend.Namespace()})), port)
 }
 
 func serve(ctx context.Context, handler http.Handler, port int) error {

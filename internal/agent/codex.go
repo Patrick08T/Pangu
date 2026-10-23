@@ -4,23 +4,28 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
+	"strconv"
 	"time"
 
+	"github.com/Patrick08T/Pangu/internal/diagnostic"
 	"github.com/Patrick08T/Pangu/internal/workflow"
 )
 
 func executeCodex(ctx context.Context, input workflow.NodeInput) (workflow.NodeOutput, error) {
 	ctx, cancel := context.WithTimeout(ctx, 25*time.Minute)
 	defer cancel()
-	binary, workspace, err := codexPaths()
+	binary, workspace, err := codexPaths(input.Workspace)
+	if err == nil {
+		err = checkCodexPolicy(ctx, binary)
+	}
 	if err != nil {
-		return workflow.NodeOutput{}, err
+		return workflow.NodeOutput{}, &workflow.Failure{Kind: "parameter", Cause: err}
 	}
 	output, err := os.CreateTemp("", "pangu-codex-*.txt")
 	if err != nil {
@@ -34,37 +39,53 @@ func executeCodex(ctx context.Context, input workflow.NodeInput) (workflow.NodeO
 	if err != nil {
 		return workflow.NodeOutput{}, err
 	}
-	args := []string{"exec", "--sandbox", "workspace-write", "-c", `approval_policy="never"`,
-		"--cd", workspace, "--ephemeral", "--color", "never", "--output-last-message", output.Name()}
+	sandbox := "workspace-write"
+	if input.Node.ReadOnly {
+		sandbox = "read-only"
+	}
+	args := []string{"exec", "--sandbox", sandbox, "-c", `approval_policy="never"`,
+		"--cd", workspace, "--ephemeral", "--json", "--color", "never", "--output-last-message", output.Name()}
+	args = append(args, codexIsolationArgs(workspace)...)
 	if input.Node.Model != "" {
 		args = append(args, "--model="+input.Node.Model)
 	}
 	cmd := exec.CommandContext(ctx, binary, append(args, "-")...)
 	cmd.Dir, cmd.Stdin = workspace, bytes.NewReader(prompt)
-	cmd.Env, cmd.Stderr = codexEnvironment(), os.Stderr
+	log := &diagnostic.Buffer{Limit: 1024 * 1024}
+	events := &codexEvents{}
+	cmd.Stdout = events
+	cmd.Env, cmd.Stderr = append(codexEnvironment(), "PANGU_CODEX_TOOL_CALLS="+strconv.Itoa(input.Node.EffectivePolicy().ToolCalls)), log
 	cmd.WaitDelay = 3 * time.Second
-	if err := runCodexProcess(ctx, cmd); err != nil {
+	runErr := runCodexProcess(ctx, cmd, input.ProcessScope)
+	result := workflow.NodeOutput{Evidence: events.Commands, EvidenceTruncated: events.Truncated}
+	if runErr != nil {
+		message, truncated := diagnostic.Text(log.Data.String(), 64*1024)
+		cause := fmt.Errorf("Codex 执行失败: %w；事件=%s；诊断=%s；截断=%t", runErr, events.ErrorMessage, message, truncated || log.Truncated)
 		if ctx.Err() != nil {
-			return workflow.NodeOutput{}, ctx.Err()
+			return result, errors.Join(cause, ctx.Err())
 		}
-		return workflow.NodeOutput{}, fmt.Errorf("Codex 执行失败（详细信息见 Worker 日志）: %w", err)
+		return result, codexFailure(cause, events.ErrorMessage)
 	}
 	file, err := os.Open(output.Name())
 	if err != nil {
-		return workflow.NodeOutput{}, err
+		return result, err
 	}
 	defer file.Close()
 	data, err := io.ReadAll(io.LimitReader(file, 16385))
 	if err != nil {
-		return workflow.NodeOutput{}, err
+		return result, err
 	}
-	return workflow.NodeOutput{Text: string(data)}, nil
+	result.Text = string(data)
+	return result, nil
 }
 
-func codexPaths() (string, string, error) {
-	binary, workspace := os.Getenv("PANGU_CODEX_BINARY"), os.Getenv("PANGU_CODEX_WORKSPACE")
+func codexPaths(workspace string) (string, string, error) {
+	if err := checkCodexHome(workspace); err != nil {
+		return "", "", err
+	}
+	binary := os.Getenv("PANGU_CODEX_BINARY")
 	if !filepath.IsAbs(binary) || !filepath.IsAbs(workspace) {
-		return "", "", fmt.Errorf("PANGU_CODEX_BINARY 和 PANGU_CODEX_WORKSPACE 必须为绝对路径")
+		return "", "", fmt.Errorf("Codex 程序和服务端分配的工作目录必须为绝对路径")
 	}
 	info, err := os.Stat(binary)
 	if err != nil {
@@ -81,17 +102,4 @@ func codexPaths() (string, string, error) {
 		return "", "", fmt.Errorf("Codex 工作目录不存在")
 	}
 	return binary, workspace, nil
-}
-
-func codexEnvironment() []string {
-	var env []string
-	for _, value := range os.Environ() {
-		key, _, _ := strings.Cut(value, "=")
-		key = strings.ToUpper(key)
-		// 不传入编排服务令牌；Eino 的模型地址和凭据不能覆盖 Codex 登录配置。
-		if !strings.HasPrefix(key, "HATCHET_") && !strings.HasPrefix(key, "PANGU_") && key != "OPENAI_API_KEY" && key != "OPENAI_BASE_URL" {
-			env = append(env, value)
-		}
-	}
-	return env
 }

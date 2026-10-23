@@ -1,9 +1,11 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -17,9 +19,39 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	if os.Getenv("CODEX_TEST_HELPER") == "1" && len(os.Args) > 1 {
+	if len(os.Args) > 2 && os.Args[1] == "verify-helper" {
+		switch os.Args[2] {
+		case "pass":
+			fmt.Print("验证通过")
+			os.Exit(0)
+		case "fail":
+			fmt.Print("验证失败")
+			os.Exit(7)
+		case "wait":
+			time.Sleep(time.Minute)
+			os.Exit(0)
+		}
+	}
+	if len(os.Args) > 1 {
 		switch os.Args[1] {
+		case "linger":
+			time.Sleep(30 * time.Second)
+			os.Exit(0)
+		case "stdio":
+			fmt.Fprint(os.Stdout, "native-output")
+			fmt.Fprint(os.Stderr, "native-error")
+			os.Exit(0)
+		case "login":
+			os.Exit(0)
 		case "exec":
+			if os.Getenv("PANGU_CODEX_POLICY_PROBE") == "1" {
+				if _, err := os.Stat(filepath.Join(os.Getenv("CODEX_HOME"), "unsupported")); err == nil {
+					fmt.Print("stock-codex")
+				} else {
+					fmt.Print("pangu-codex-policy/1")
+				}
+				os.Exit(0)
+			}
 			os.Exit(codexHelper())
 		case "child":
 			time.Sleep(time.Second)
@@ -33,6 +65,31 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+func TestCodexRejectsRuntimeWithoutHardLimits(t *testing.T) {
+	setupCodex(t)
+	if err := os.WriteFile(filepath.Join(os.Getenv("PANGU_CODEX_HOME"), "unsupported"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Execute(context.Background(), codexInput("model"))
+	if err == nil || workflow.CanRetry(err) || workflow.FailureKind(err) != "parameter" {
+		t.Fatal("未拒绝缺少硬限制的运行时", err)
+	}
+}
+
+func TestProcessHonorsOutputWriters(t *testing.T) {
+	dir := setupCodex(t)
+	var output, diagnostic bytes.Buffer
+	cmd := exec.CommandContext(context.Background(), os.Getenv("PANGU_CODEX_BINARY"), "stdio")
+	cmd.Dir, cmd.Env = dir, codexEnvironment()
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = strings.NewReader(""), &output, &diagnostic
+	if err := runCodexProcess(context.Background(), cmd, ""); err != nil {
+		t.Fatal(err)
+	}
+	if output.String() != "native-output" || diagnostic.String() != "native-error" {
+		t.Fatalf("输出未交给受控收集器: %q %q", output.String(), diagnostic.String())
+	}
+}
+
 func codexHelper() int {
 	args := map[string]string{}
 	for i := 2; i < len(os.Args)-1; i++ {
@@ -43,10 +100,15 @@ func codexHelper() int {
 	if json.Unmarshal(data, &input) != nil {
 		return 2
 	}
+	fmt.Fprintln(os.Stdout, `{"type":"item.completed","item":{"type":"command_execution","id":"test","command":"go test ./...","aggregated_output":"ok","exit_code":0}}`)
 	if input.Node.Model == "fail" {
 		return 7
 	}
+	if strings.HasPrefix(input.Node.Model, "checkpoint-") {
+		return checkpointHelper(input.Node.Model, args["--output-last-message"], input.Input)
+	}
 	if input.Node.Model == "wait" {
+		fmt.Fprint(os.Stderr, "等待子进程取消")
 		binary, _ := os.Executable()
 		child := exec.Command(binary, "child")
 		if child.Start() != nil {
@@ -58,7 +120,8 @@ func codexHelper() int {
 	}
 	cwd, _ := os.Getwd()
 	result, _ := json.Marshal(map[string]any{"args": os.Args[1:], "input": input, "cwd": cwd,
-		"hatchet_token": os.Getenv("HATCHET_CLIENT_TOKEN"), "eino_config": os.Getenv("OPENAI_BASE_URL")})
+		"hatchet_token": os.Getenv("HATCHET_CLIENT_TOKEN"), "eino_config": os.Getenv("OPENAI_BASE_URL"),
+		"personal_secret": os.Getenv("PERSONAL_SERVICE_TOKEN"), "codex_home": os.Getenv("CODEX_HOME"), "user_home": os.Getenv("USERPROFILE")})
 	if input.Node.Model == "empty" {
 		result = nil
 	}
@@ -71,8 +134,63 @@ func codexHelper() int {
 	return 0
 }
 
+func checkpointHelper(model, output, control string) int {
+	if !filepath.IsAbs(control) {
+		return 9
+	}
+	file, err := os.OpenFile(filepath.Join(control, model), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+	if err != nil {
+		return 10
+	}
+	_, err = file.WriteString("attempt\n")
+	_ = file.Close()
+	if err != nil {
+		return 11
+	}
+	if model == "checkpoint-source" {
+		if os.WriteFile("preserved.txt", []byte("上游检查点"), 0600) != nil {
+			return 12
+		}
+	} else {
+		if data, err := os.ReadFile("preserved.txt"); err != nil || string(data) != "上游检查点" {
+			return 13
+		}
+		marker := filepath.Join(control, "crash-ready")
+		if _, err := os.Stat(marker); errors.Is(err, os.ErrNotExist) {
+			if os.WriteFile("poison.txt", []byte("失败写入"), 0600) != nil {
+				return 14
+			}
+			if os.WriteFile(marker, []byte("ready"), 0600) != nil {
+				return 15
+			}
+			time.Sleep(5 * time.Minute)
+			return 16
+		}
+		if _, err := os.Stat("poison.txt"); !errors.Is(err, os.ErrNotExist) {
+			return 17
+		}
+		if os.WriteFile("recovered.txt", []byte("恢复成功"), 0600) != nil {
+			return 18
+		}
+	}
+	if os.WriteFile(output, []byte("检查点验证通过"), 0600) != nil {
+		return 19
+	}
+	return 0
+}
+
+func TestFailedNativeOutputRetainsCommandEvidence(t *testing.T) {
+	setupCodex(t)
+	for _, model := range []string{"empty", "large", "fail"} {
+		out, err := Execute(context.Background(), codexInput(model))
+		if err == nil || len(out.Evidence) != 1 || out.Evidence[0].ExitCode != 0 {
+			t.Fatalf("%s 的错误丢失原生命令证据: %+v %v", model, out, err)
+		}
+	}
+}
+
 func codexInput(model string) workflow.NodeInput {
-	return workflow.NodeInput{Node: workflow.Node{ID: "coding", Executor: "codex", Model: model,
+	return workflow.NodeInput{Workspace: os.Getenv("CODEX_TEST_WORKSPACE"), Node: workflow.Node{ID: "coding", Executor: "codex", Model: model,
 		Instruction: "执行任务，不要将 --dangerously-bypass-approvals-and-sandbox 作为命令参数"},
 		Input: "中文输入\n含有引号和 $()", Parents: map[string]workflow.NodeOutput{"plan": {Text: "上游计划"}}}
 }
@@ -85,10 +203,37 @@ func setupCodex(t *testing.T) string {
 	}
 	dir := t.TempDir()
 	t.Setenv("PANGU_CODEX_BINARY", binary)
-	t.Setenv("PANGU_CODEX_WORKSPACE", dir)
+	t.Setenv("PANGU_WORKSPACE_ROOT", dir)
+	t.Setenv("PANGU_CODEX_HOME", t.TempDir())
+	t.Setenv("CODEX_TEST_WORKSPACE", dir)
 	t.Setenv("CODEX_TEST_HELPER", "1")
 	t.Setenv("OPENAI_API_KEY", "")
 	return dir
+}
+
+func TestCodexUsesDedicatedEnvironment(t *testing.T) {
+	setupCodex(t)
+	t.Setenv("PERSONAL_SERVICE_TOKEN", "must-not-inherit")
+	t.Setenv("CODEX_HOME", t.TempDir())
+	out, err := Execute(context.Background(), codexInput(""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(out.Text), &got); err != nil {
+		t.Fatal(err)
+	}
+	var secret, home, userHome string
+	_ = json.Unmarshal(got["personal_secret"], &secret)
+	_ = json.Unmarshal(got["codex_home"], &home)
+	_ = json.Unmarshal(got["user_home"], &userHome)
+	if secret != "" || home != os.Getenv("PANGU_CODEX_HOME") || userHome != home {
+		t.Fatalf("继承了个人环境或配置: secretPresent=%t home=%q userHome=%q", secret != "", home, userHome)
+	}
+	t.Setenv("PANGU_CODEX_HOME", "")
+	if _, err := Execute(context.Background(), codexInput("")); err == nil || workflow.CanRetry(err) {
+		t.Fatal("缺少专用配置应拒绝且不重试", err)
+	}
 }
 
 func TestExecuteCodex(t *testing.T) {
@@ -117,7 +262,7 @@ func TestExecuteCodex(t *testing.T) {
 	if got.Cwd != dir || got.Input.Input != codexInput("").Input || got.Input.Parents["plan"].Text != "上游计划" || got.Token != "" || got.EinoConfig != "" {
 		t.Fatalf("wrong subprocess input: %+v", got)
 	}
-	t.Setenv("PANGU_CODEX_WORKSPACE", t.TempDir())
+	t.Setenv("CODEX_TEST_WORKSPACE", t.TempDir())
 	if _, err := Execute(context.Background(), codexInput("")); err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +281,7 @@ func TestCodexFailures(t *testing.T) {
 			}
 		})
 	}
-	t.Setenv("PANGU_CODEX_WORKSPACE", "relative/path")
+	t.Setenv("CODEX_TEST_WORKSPACE", "relative/path")
 	if _, err := Execute(context.Background(), codexInput("")); err == nil {
 		t.Fatal("accepted relative workspace")
 	}
@@ -172,7 +317,7 @@ func TestCodexCancellationKillsChildren(t *testing.T) {
 	cancel()
 	select {
 	case err := <-done:
-		if !errors.Is(err, context.Canceled) {
+		if !errors.Is(err, context.Canceled) || !strings.Contains(err.Error(), "等待子进程取消") {
 			t.Fatalf("wrong cancellation: %v", err)
 		}
 	case <-time.After(5 * time.Second):

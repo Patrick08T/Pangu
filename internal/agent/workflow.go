@@ -2,15 +2,26 @@ package agent
 
 import (
 	"context"
-	"fmt"
+	"encoding/json"
+	"time"
 
 	"github.com/Patrick08T/Pangu/internal/workflow"
 )
 
+func outputInstruction(node workflow.Node) string {
+	if node.OutputSchema == nil {
+		return node.Instruction
+	}
+	data, _ := json.Marshal(node.OutputSchema)
+	return node.Instruction + "\n最终输出必须是符合以下结构的 JSON 对象，不添加 Markdown 围栏或未声明字段：" + string(data)
+}
+
 func Execute(ctx context.Context, input workflow.NodeInput) (workflow.NodeOutput, error) {
 	if err := input.Node.Validate(); err != nil {
-		return workflow.NodeOutput{}, err
+		return workflow.NodeOutput{}, &workflow.Failure{Kind: "parameter", Cause: err}
 	}
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(input.Node.EffectivePolicy().TimeoutSeconds)*time.Second)
+	defer cancel()
 	var output workflow.NodeOutput
 	var err error
 	if input.Node.Executor == "codex" {
@@ -19,13 +30,14 @@ func Execute(ctx context.Context, input workflow.NodeInput) (workflow.NodeOutput
 		output, err = executeEino(ctx, input)
 	}
 	if err != nil {
-		return workflow.NodeOutput{}, err
+		return output, classify(err)
 	}
 	if err := ctx.Err(); err != nil {
-		return workflow.NodeOutput{}, err
+		return output, err
 	}
-	if output.Text == "" || len(output.Text) > 16384 {
-		return workflow.NodeOutput{}, fmt.Errorf("Agent 输出为空或超过 16 KiB")
+	err = workflow.ValidateOutput(input.Node, &output)
+	if err != nil {
+		err = &workflow.Failure{Kind: "output", Cause: err}
 	}
-	return output, nil
+	return output, err
 }

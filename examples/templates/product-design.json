@@ -1,0 +1,21 @@
+{
+  "format": "pangu.catalog.v1",
+  "kind": "template",
+  "name": "产品经理：方案设计与任务拆分",
+  "spec": {
+    "agent": {
+      "id": "design",
+      "executor": "eino",
+      "role": "product_manager",
+      "mode": "design",
+      "model": "project-connection",
+      "description": "产品经理：方案设计与任务拆分",
+      "instruction": "设计用户流程、输入输出、异常和边界、验收条件。拆分可独立执行的任务，每项填写 id、title、scope、depends_on、deliverable、acceptance，依赖无环。未知技术能力标为待验证；只登记报告，不自动创建或执行开发任务。",
+      "policy": {
+        "retries": 2,
+        "timeout_seconds": 180,
+        "tool_calls": 10
+      }
+    }
+  }
+}

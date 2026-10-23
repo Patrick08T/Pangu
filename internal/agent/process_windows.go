@@ -2,58 +2,171 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode/utf16"
 	"unsafe"
 
+	"github.com/Patrick08T/Pangu/internal/workflow"
 	"github.com/google/uuid"
 	"golang.org/x/sys/windows"
 )
 
-func runCodexProcess(ctx context.Context, cmd *exec.Cmd) error {
+func runCodexProcess(ctx context.Context, cmd *exec.Cmd, scope string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	job, err := codexJob()
+	job, err := codexJob(scope)
 	if err != nil {
 		return err
 	}
-	defer windows.CloseHandle(job)
+	defer func() {
+		if job != 0 {
+			_ = windows.CloseHandle(job)
+		}
+	}()
 	input, err := codexInputFile(cmd.Stdin)
 	if err != nil {
 		return err
 	}
 	defer input.Close()
-	null, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	stdout, closeOutput, err := codexOutputPipe(cmd.Stdout)
 	if err != nil {
 		return err
 	}
-	defer null.Close()
-	handles, err := codexHandles(input, null, os.Stderr)
+	defer closeOutput()
+	stderr, closeError, err := codexOutputPipe(cmd.Stderr)
 	if err != nil {
 		return err
 	}
-	defer func() {
-		for _, h := range handles {
-			_ = windows.CloseHandle(h)
-		}
-	}()
-	process, err := startCodexProcess(cmd, job, handles)
+	defer closeError()
+	process, err := launchCodex(cmd, job, input, stdout, stderr)
 	if err != nil {
 		return err
 	}
 	defer windows.CloseHandle(process.Process)
 	defer windows.CloseHandle(process.Thread)
-	return waitCodexProcess(ctx, job, process.Process)
+	err = waitCodexProcess(ctx, job, process.Process)
+	// 结束整个进程组后再等输出管道关闭，避免后代持有句柄阻塞收尾。
+	stopErr := stopCodexJob(job)
+	if stopErr != nil {
+		_ = windows.CloseHandle(job)
+		job = 0
+	}
+	return errors.Join(err, stopErr)
 }
 
-func codexJob() (windows.Handle, error) {
-	job, err := windows.CreateJobObject(nil, nil)
+func stopCodexJob(job windows.Handle) error {
+	handles, err := jobProcessHandles(job)
+	if err != nil {
+		_ = windows.TerminateJobObject(job, 1)
+		return fmt.Errorf("%w: %v", workflow.ErrStopUnconfirmed, err)
+	}
+	defer func() {
+		for _, handle := range handles {
+			_ = windows.CloseHandle(handle)
+		}
+	}()
+	if err := windows.TerminateJobObject(job, 1); err != nil {
+		return fmt.Errorf("%w: %v", workflow.ErrStopUnconfirmed, err)
+	}
+	deadline := time.Now().Add(25 * time.Second)
+	for _, handle := range handles {
+		status, err := windows.WaitForSingleObject(handle, uint32(max(0, time.Until(deadline).Milliseconds())))
+		if err != nil || status != windows.WAIT_OBJECT_0 {
+			return workflow.ErrStopUnconfirmed
+		}
+	}
+	for time.Now().Before(deadline) {
+		var accounting struct {
+			TotalUserTime, TotalKernelTime, ThisPeriodUserTime, ThisPeriodKernelTime       int64
+			TotalPageFaultCount, TotalProcesses, ActiveProcesses, TotalTerminatedProcesses uint32
+		}
+		err := windows.QueryInformationJobObject(job, windows.JobObjectBasicAccountingInformation,
+			uintptr(unsafe.Pointer(&accounting)), uint32(unsafe.Sizeof(accounting)), nil)
+		if err != nil {
+			return fmt.Errorf("%w: %v", workflow.ErrStopUnconfirmed, err)
+		}
+		if accounting.ActiveProcesses == 0 {
+			return nil
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return workflow.ErrStopUnconfirmed
+}
+
+func jobProcessHandles(job windows.Handle) ([]windows.Handle, error) {
+	var processes struct {
+		Assigned, Count uint32
+		IDs             [4096]uintptr
+	}
+	err := windows.QueryInformationJobObject(job, windows.JobObjectBasicProcessIdList,
+		uintptr(unsafe.Pointer(&processes)), uint32(unsafe.Sizeof(processes)), nil)
+	if err != nil || processes.Count > uint32(len(processes.IDs)) {
+		return nil, workflow.ErrStopUnconfirmed
+	}
+	var handles []windows.Handle
+	for _, id := range processes.IDs[:processes.Count] {
+		handle, err := windows.OpenProcess(windows.SYNCHRONIZE, false, uint32(id))
+		if errors.Is(err, windows.ERROR_INVALID_PARAMETER) {
+			continue
+		}
+		if err != nil {
+			for _, opened := range handles {
+				_ = windows.CloseHandle(opened)
+			}
+			return nil, err
+		}
+		handles = append(handles, handle)
+	}
+	return handles, nil
+}
+
+func launchCodex(cmd *exec.Cmd, job windows.Handle, files ...*os.File) (*windows.ProcessInformation, error) {
+	handles, err := codexHandles(files...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		for _, handle := range handles {
+			_ = windows.CloseHandle(handle)
+		}
+	}()
+	return startCodexProcess(cmd, job, handles)
+}
+
+func codexOutputPipe(destination io.Writer) (*os.File, func(), error) {
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		return nil, nil, err
+	}
+	if destination == nil {
+		destination = io.Discard
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer reader.Close()
+		_, _ = io.Copy(destination, reader)
+	}()
+	return writer, func() { _ = writer.Close(); <-done }, nil
+}
+
+func codexJob(scope string) (windows.Handle, error) {
+	var name *uint16
+	if scope != "" {
+		if _, err := uuid.Parse(scope); err != nil {
+			return 0, err
+		}
+		name, _ = windows.UTF16PtrFromString(`Local\Pangu-` + scope)
+	}
+	job, err := windows.CreateJobObject(nil, name)
 	if err != nil {
 		return 0, err
 	}
@@ -155,10 +268,6 @@ func waitCodexProcess(ctx context.Context, job, process windows.Handle) error {
 			return err
 		}
 	case <-ctx.Done():
-		if err := windows.TerminateJobObject(job, 1); err != nil {
-			return err
-		}
-		<-done
 		return ctx.Err()
 	}
 	var code uint32
@@ -166,7 +275,7 @@ func waitCodexProcess(ctx context.Context, job, process windows.Handle) error {
 		return err
 	}
 	if code != 0 {
-		return fmt.Errorf("进程退出码 %d", code)
+		return processExitError(code)
 	}
 	return nil
 }

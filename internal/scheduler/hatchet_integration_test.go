@@ -17,9 +17,11 @@ import (
 
 	"github.com/Patrick08T/Pangu/internal/agent"
 	"github.com/Patrick08T/Pangu/internal/api"
+	"github.com/Patrick08T/Pangu/internal/database"
+	"github.com/Patrick08T/Pangu/internal/schedule"
 	"github.com/Patrick08T/Pangu/internal/scheduler"
 	"github.com/Patrick08T/Pangu/internal/workflow"
-	"github.com/hatchet-dev/hatchet/pkg/client/rest"
+	"github.com/google/uuid"
 	hatchet "github.com/hatchet-dev/hatchet/sdks/go"
 )
 
@@ -61,7 +63,7 @@ func (m *modelServer) count(model string) int {
 
 func integrationSetup(t *testing.T) (*modelServer, scheduler.Backend, http.Handler) {
 	m, client := integrationClient(t)
-	worker, err := scheduler.NewWorker(client, agent.Execute)
+	worker, err := scheduler.NewWorker(client, agent.Execute, agent.Preflight)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,13 +73,34 @@ func integrationSetup(t *testing.T) (*modelServer, scheduler.Backend, http.Handl
 	}
 	t.Cleanup(func() { _ = stop() })
 	b := scheduler.NewBackend(client)
-	return m, b, api.New(b)
+	awaitWorker(t, b)
+	return m, b, api.New(b, integrationAccess{})
+}
+
+func awaitWorker(t *testing.T, backend scheduler.Backend) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		result, err := backend.Preflight(context.Background(), workflow.Definition{})
+		if err == nil && result.Ready {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatal("Worker 未上线")
 }
 
 func integrationClient(t *testing.T) (*modelServer, *hatchet.Client) {
 	t.Helper()
 	if os.Getenv("PANGU_INTEGRATION") != "1" {
 		t.Skip("设置 PANGU_INTEGRATION=1 并连接本地 Hatchet 后执行")
+	}
+	if os.Getenv("PANGU_TEST_DATABASE_URL") == "" {
+		t.Fatal("Hatchet 集成测试必须配置独立测试数据库")
+	}
+	t.Setenv("PANGU_DATABASE_URL", os.Getenv("PANGU_TEST_DATABASE_URL"))
+	if err := database.Migrate(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 	m := &modelServer{calls: map[string]int{}}
 	server := httptest.NewServer(m)
@@ -101,6 +124,7 @@ func request(t *testing.T, h http.Handler, method, path string, value any, statu
 	}
 	r := httptest.NewRequest(method, path, bytes.NewReader(data))
 	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Idempotency-Key", uuid.NewString())
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
 	if w.Code != status {
@@ -130,11 +154,11 @@ func waitRun(t *testing.T, h http.Handler, id string) scheduler.RunDetails {
 		if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
 			t.Fatal(err)
 		}
-		if out.Run.Run.Status == "COMPLETED" {
+		if out.Status == "succeeded" {
 			return out
 		}
-		if out.Run.Run.Status == "FAILED" || out.Run.Run.Status == "CANCELLED" {
-			t.Fatalf("run failed: status=%s error=%v", out.Run.Run.Status, out.Run.Run.ErrorMessage)
+		if out.Status == "failed" || out.Status == "cancelled" {
+			t.Fatalf("run failed: status=%s error=%v", out.Status, out.Error)
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
@@ -143,8 +167,9 @@ func waitRun(t *testing.T, h http.Handler, id string) scheduler.RunDetails {
 }
 
 func TestHatchetNodeRetry(t *testing.T) {
-	m, _, h := integrationSetup(t)
-	d := workflow.Definition{Input: "integration", Nodes: []workflow.Node{
+	m, backend, h := integrationSetup(t)
+	project := registerTestProject(t, backend)
+	d := workflow.Definition{ProjectID: project.ID, Input: "integration", Nodes: []workflow.Node{
 		{Executor: "eino", ID: "source", Model: "source", Instruction: "source"},
 		{Executor: "eino", ID: "flaky", Model: "flaky", Instruction: "flaky", DependsOn: []string{"source"}},
 		{Executor: "eino", ID: "final", Model: "final", Instruction: "final", DependsOn: []string{"flaky"}},
@@ -161,7 +186,7 @@ func TestHatchetNodeRetry(t *testing.T) {
 		t.Fatalf("expected 3 independent child runs, got %d", len(out.Nodes))
 	}
 	for _, node := range out.Nodes {
-		if node.Status != "COMPLETED" {
+		if node.Status != "succeeded" {
 			t.Fatalf("node did not complete: %+v", node)
 		}
 	}
@@ -169,16 +194,19 @@ func TestHatchetNodeRetry(t *testing.T) {
 }
 
 func TestHatchetCron(t *testing.T) {
-	m, _, h := integrationSetup(t)
+	m, backend, h := integrationSetup(t)
+	project := registerTestProject(t, backend)
 	c := workflow.Cron{Name: fmt.Sprintf("integration-%d", time.Now().UnixNano()), Expression: "* * * * *", Workflow: workflow.Definition{
-		Input: "cron", Nodes: []workflow.Node{{Executor: "eino", ID: "cron", Model: "cron", Instruction: "cron"}},
+		ProjectID: project.ID, Input: "cron", Nodes: []workflow.Node{{Executor: "eino", ID: "cron", Model: "cron", Instruction: "cron"}},
 	}}
-	var created rest.CronWorkflows
+	var created schedule.Plan
 	request(t, h, "POST", "/crons", c, 201, &created)
-	t.Cleanup(func() { request(t, h, "DELETE", "/crons/"+created.Metadata.Id, nil, 204, nil) })
-	var listed rest.CronWorkflowsList
+	t.Cleanup(func() { request(t, h, "DELETE", "/crons/"+created.ID, nil, 204, nil) })
+	var listed struct {
+		Items []schedule.Plan `json:"items"`
+	}
 	request(t, h, "GET", "/crons", nil, 200, &listed)
-	if listed.Rows == nil || len(*listed.Rows) == 0 {
+	if len(listed.Items) == 0 {
 		t.Fatal("Cron not listed")
 	}
 	deadline := time.Now().Add(90 * time.Second)
@@ -196,9 +224,12 @@ func TestHatchetWorkerRecovery(t *testing.T) {
 		t.Skip("设置 PANGU_TEST_BINARY 指向已构建的 Pangu 可执行文件")
 	}
 	m, client := integrationClient(t)
-	h := api.New(scheduler.NewBackend(client))
+	backend := scheduler.NewBackend(client)
+	h := api.New(backend, integrationAccess{})
+	project := registerTestProject(t, backend)
 	first := startProcess(t)
-	d := workflow.Definition{Input: "restart", Nodes: []workflow.Node{
+	awaitWorker(t, backend)
+	d := workflow.Definition{ProjectID: project.ID, Input: "restart", Nodes: []workflow.Node{
 		{Executor: "eino", ID: "source", Model: "source", Instruction: "source"},
 		{Executor: "eino", ID: "recover", Model: "recover", Instruction: "recover", DependsOn: []string{"source"}},
 		{Executor: "eino", ID: "final", Model: "final", Instruction: "final", DependsOn: []string{"recover"}},
@@ -261,8 +292,9 @@ func startProcess(t *testing.T) *exec.Cmd {
 }
 
 func TestHatchetWideLargeInput(t *testing.T) {
-	m, _, h := integrationSetup(t)
-	d := workflow.Definition{Input: strings.Repeat("x", 200*1024)}
+	m, backend, h := integrationSetup(t)
+	project := registerTestProject(t, backend)
+	d := workflow.Definition{ProjectID: project.ID, Input: strings.Repeat("x", 200*1024)}
 	for i := 0; i < 32; i++ {
 		d.Nodes = append(d.Nodes, workflow.Node{Executor: "eino", ID: fmt.Sprintf("node%d", i), Model: "wide", Instruction: "test"})
 	}
@@ -275,7 +307,7 @@ func TestHatchetWideLargeInput(t *testing.T) {
 		t.Fatalf("nodes=%d calls=%d", len(out.Nodes), m.count("wide"))
 	}
 	firstID := accepted.RunID
-	d = workflow.Definition{Input: "later", Nodes: []workflow.Node{{Executor: "eino", ID: "later", Model: "later", Instruction: "later"}}}
+	d = workflow.Definition{ProjectID: project.ID, Input: "later", Nodes: []workflow.Node{{Executor: "eino", ID: "later", Model: "later", Instruction: "later"}}}
 	request(t, h, "POST", "/runs", d, 202, &accepted)
 	_ = waitRun(t, h, accepted.RunID)
 	request(t, h, "GET", "/runs/"+firstID, nil, 200, &out)
@@ -283,15 +315,17 @@ func TestHatchetWideLargeInput(t *testing.T) {
 		t.Fatalf("新运行后历史节点不完整: got=%d", len(out.Nodes))
 	}
 	for _, node := range out.Nodes {
-		if node.Input == nil || node.Output == nil {
-			t.Fatal("节点详情缺少输入或输出")
+		if node.NodeID == "" || node.Output == "" {
+			t.Fatal("节点详情缺少节点标识或输出")
 		}
 	}
 }
 
 func TestHatchetRejectBeforeRegistration(t *testing.T) {
 	_, client := integrationClient(t)
-	h := api.New(scheduler.NewBackend(client))
-	d := workflow.Definition{Input: "unregistered", Nodes: []workflow.Node{{Executor: "eino", ID: "test", Model: "test", Instruction: "test"}}}
+	backend := scheduler.NewBackend(client)
+	project := registerTestProject(t, backend)
+	h := api.New(backend, integrationAccess{})
+	d := workflow.Definition{ProjectID: project.ID, Input: "unregistered", Nodes: []workflow.Node{{Executor: "eino", ID: "test", Model: "test", Instruction: "test"}}}
 	request(t, h, "POST", "/runs", d, 503, nil)
 }
