@@ -84,11 +84,16 @@ func TestCloneRejectsDirectoryAliasIntoSource(t *testing.T) {
 func TestFailedAttemptDoesNotPolluteNextAttempt(t *testing.T) {
 	source, commit := sourceRepository(t)
 	ctx := context.Background()
-	base := filepath.Join(t.TempDir(), "base")
+	t.Setenv("PANGU_WORKSPACE_ROOT", t.TempDir())
+	root, err := workspaceRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := filepath.Join(root, "base")
 	if err := Clone(ctx, source, commit, base); err != nil {
 		t.Fatal(err)
 	}
-	first := filepath.Join(t.TempDir(), "success")
+	first := filepath.Join(root, "success")
 	if err := Clone(ctx, base, commit, first); err != nil {
 		t.Fatal(err)
 	}
@@ -98,12 +103,12 @@ func TestFailedAttemptDoesNotPolluteNextAttempt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	failed := filepath.Join(t.TempDir(), "failed")
+	failed := filepath.Join(root, "failed")
 	if err := Clone(ctx, base, next, failed); err != nil {
 		t.Fatal(err)
 	}
 	_ = os.WriteFile(filepath.Join(failed, "leak.txt"), []byte("failed"), 0600)
-	retry := filepath.Join(t.TempDir(), "retry")
+	retry := filepath.Join(root, "retry")
 	if err := Clone(ctx, base, next, retry); err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +129,12 @@ func TestSnapshotRejectsJunctionAndSpecialFiles(t *testing.T) {
 		t.Skip("Windows junction 专项")
 	}
 	source, commit := sourceRepository(t)
-	base, attempt := filepath.Join(t.TempDir(), "base"), filepath.Join(t.TempDir(), "attempt")
+	t.Setenv("PANGU_WORKSPACE_ROOT", t.TempDir())
+	root, err := workspaceRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, attempt := filepath.Join(root, "base"), filepath.Join(root, "attempt")
 	ctx := context.Background()
 	for _, path := range []string{base, attempt} {
 		if err := Clone(ctx, source, commit, path); err != nil {

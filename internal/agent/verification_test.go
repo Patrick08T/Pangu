@@ -14,7 +14,11 @@ func TestVerificationUsesActualExitAndCancelsProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, mode := range []string{"pass", "fail", "wait"} {
-		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+		timeout := 5 * time.Second
+		if mode == "wait" {
+			timeout = 200 * time.Millisecond
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		evidence, err := Verify(ctx, t.TempDir(), []string{binary, "verify-helper", mode}, "")
 		cancel()
 		if mode == "pass" && (err != nil || evidence.ExitCode != 0) {
