@@ -1,0 +1,25 @@
+{
+  "question": "怎样降低小型研发团队的任务整理成本？",
+  "audience": "5–15 人研发团队",
+  "market": "中国",
+  "time_scope": "2026 年，具体资料日期以实际来源为准",
+  "context": "当前通过手工文档登记，重复整理耗时；尚无用户访谈数据。",
+  "constraints": "预算、人员和日期未确定，不承诺工期。",
+  "public_queries": [
+    "研发团队 任务管理 产品 官网"
+  ],
+  "urls": [],
+  "documents": [
+    "README.md"
+  ],
+  "competitors": [
+    "飞书项目",
+    "GitHub Projects"
+  ],
+  "dimensions": [
+    "目标用户",
+    "任务组织",
+    "自动化",
+    "公开价格"
+  ]
+}

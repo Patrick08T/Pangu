@@ -10,7 +10,7 @@ import (
 	"syscall"
 )
 
-func runCodexProcess(_ context.Context, cmd *exec.Cmd) error {
+func runCodexProcess(_ context.Context, cmd *exec.Cmd, _ string) error {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {
 		err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)

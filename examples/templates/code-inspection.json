@@ -1,0 +1,18 @@
+{
+  "format": "pangu.catalog.v1",
+  "kind": "template",
+  "name": "只读项目巡检",
+  "spec": {
+    "agent": {
+      "id": "inspect",
+      "executor": "codex",
+      "instruction": "只读检查用户指定范围，按严重度列出可复现问题、文件位置、依据与修复建议。区分已验证问题与推测。不得修改任何项目文件，不运行会写入项目的命令，不提交或推送。输出中文巡检结果。",
+      "read_only": true,
+      "policy": {
+        "retries": 2,
+        "timeout_seconds": 1800,
+        "tool_calls": 10
+      }
+    }
+  }
+}

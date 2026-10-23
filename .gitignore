@@ -36,3 +36,9 @@ go.work.sum
 .tools/
 .artifacts/
 /pangu
+
+# 前端依赖、构建与本地配置
+web/node_modules/
+web/dist/
+.env.*
+!.env.example

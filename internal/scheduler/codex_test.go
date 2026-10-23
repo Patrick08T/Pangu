@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -14,6 +12,8 @@ import (
 	"github.com/Patrick08T/Pangu/internal/api"
 	"github.com/Patrick08T/Pangu/internal/scheduler"
 	"github.com/Patrick08T/Pangu/internal/workflow"
+	"github.com/hatchet-dev/hatchet/pkg/client/rest"
+	hatchet "github.com/hatchet-dev/hatchet/sdks/go"
 )
 
 func TestHatchetCodexScheduling(t *testing.T) {
@@ -40,7 +40,7 @@ func TestHatchetCodexScheduling(t *testing.T) {
 			return workflow.NodeOutput{}, fmt.Errorf("temporary Codex failure")
 		}
 		return workflow.NodeOutput{Text: "code output"}, nil
-	})
+	}, mockPreflight)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,8 +49,11 @@ func TestHatchetCodexScheduling(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = stop() })
-	h := api.New(scheduler.NewBackend(client))
-	d := workflow.Definition{Input: "mixed", Nodes: []workflow.Node{
+	backend := scheduler.NewBackend(client)
+	awaitWorker(t, backend)
+	project := registerTestProject(t, backend)
+	h := api.New(backend, integrationAccess{})
+	d := workflow.Definition{ProjectID: project.ID, Input: "mixed", Nodes: []workflow.Node{
 		{ID: "source", Executor: "eino", Model: "source", Instruction: "source"},
 		{ID: "codeA", Executor: "codex", Instruction: "code", DependsOn: []string{"source"}},
 		{ID: "codeB", Executor: "codex", Instruction: "code", DependsOn: []string{"source"}},
@@ -68,9 +71,9 @@ func TestHatchetCodexScheduling(t *testing.T) {
 	}
 	codexNodes := 0
 	for _, node := range out.Nodes {
-		if strings.HasPrefix(node.DisplayName, "pangu-codex-v1-") {
+		if node.Executor == "codex" {
 			codexNodes++
-			assertCodexQueueTimeout(t, h, node.TaskExternalId.String())
+			assertCodexQueueTimeout(t, client, node.ID)
 		}
 	}
 	if len(out.Nodes) != 4 || codexNodes != 2 {
@@ -78,14 +81,17 @@ func TestHatchetCodexScheduling(t *testing.T) {
 	}
 }
 
-func assertCodexQueueTimeout(t *testing.T, h http.Handler, id string) {
+func assertCodexQueueTimeout(t *testing.T, client *hatchet.Client, id string) {
 	t.Helper()
-	var details scheduler.RunDetails
-	request(t, h, "GET", "/runs/"+id, nil, 200, &details)
+	var details *rest.V1WorkflowRunDetails
+	details, err := client.Runs().Get(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
 	var config struct {
 		Tasks []struct{ ScheduleTimeout *string }
 	}
-	data, err := json.Marshal(details.Run.WorkflowConfig)
+	data, err := json.Marshal(details.WorkflowConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
