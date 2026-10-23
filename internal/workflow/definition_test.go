@@ -7,9 +7,9 @@ import (
 
 func definition() Definition {
 	return Definition{Input: "主题", Nodes: []Node{
-		{ID: "summary", Model: "test", Instruction: "总结", DependsOn: []string{"left", "right"}},
-		{ID: "left", Model: "test", Instruction: "分析"},
-		{ID: "right", Model: "test", Instruction: "质疑"},
+		{Executor: "eino", ID: "summary", Model: "test", Instruction: "总结", DependsOn: []string{"left", "right"}},
+		{Executor: "eino", ID: "left", Model: "test", Instruction: "分析"},
+		{Executor: "eino", ID: "right", Model: "test", Instruction: "质疑"},
 	}}
 }
 

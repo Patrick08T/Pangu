@@ -33,7 +33,7 @@ func TestExecuteEinoAgent(t *testing.T) {
 	t.Setenv("OPENAI_BASE_URL", server.URL)
 	t.Setenv("OPENAI_API_KEY", "test-key")
 	input := workflow.NodeInput{
-		Node:  workflow.Node{ID: "summary", Model: "test-model", Instruction: `输出 JSON {"answer": "..."}`},
+		Node:  workflow.Node{Executor: "eino", ID: "summary", Model: "test-model", Instruction: `输出 JSON {"answer": "..."}`},
 		Input: "用户主题", Parents: map[string]workflow.NodeOutput{"research": {Text: "上游结果"}},
 	}
 	result, err := Execute(context.Background(), input)
@@ -60,7 +60,7 @@ func TestExecutePropagatesModelFailure(t *testing.T) {
 	defer server.Close()
 	t.Setenv("OPENAI_BASE_URL", server.URL)
 	t.Setenv("OPENAI_API_KEY", "test-key")
-	_, err := Execute(context.Background(), workflow.NodeInput{Node: workflow.Node{ID: "test", Model: "test", Instruction: "test"}})
+	_, err := Execute(context.Background(), workflow.NodeInput{Node: workflow.Node{Executor: "eino", ID: "test", Model: "test", Instruction: "test"}})
 	if err == nil {
 		t.Fatal("model failure was swallowed")
 	}
@@ -68,7 +68,7 @@ func TestExecutePropagatesModelFailure(t *testing.T) {
 
 func TestExecuteRequiresCurrentCredentials(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "")
-	_, err := Execute(context.Background(), workflow.NodeInput{Node: workflow.Node{ID: "test", Model: "test", Instruction: "test"}})
+	_, err := Execute(context.Background(), workflow.NodeInput{Node: workflow.Node{Executor: "eino", ID: "test", Model: "test", Instruction: "test"}})
 	if err == nil {
 		t.Fatal("accepted missing credentials")
 	}

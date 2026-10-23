@@ -145,9 +145,9 @@ func waitRun(t *testing.T, h http.Handler, id string) scheduler.RunDetails {
 func TestHatchetNodeRetry(t *testing.T) {
 	m, _, h := integrationSetup(t)
 	d := workflow.Definition{Input: "integration", Nodes: []workflow.Node{
-		{ID: "source", Model: "source", Instruction: "source"},
-		{ID: "flaky", Model: "flaky", Instruction: "flaky", DependsOn: []string{"source"}},
-		{ID: "final", Model: "final", Instruction: "final", DependsOn: []string{"flaky"}},
+		{Executor: "eino", ID: "source", Model: "source", Instruction: "source"},
+		{Executor: "eino", ID: "flaky", Model: "flaky", Instruction: "flaky", DependsOn: []string{"source"}},
+		{Executor: "eino", ID: "final", Model: "final", Instruction: "final", DependsOn: []string{"flaky"}},
 	}}
 	var accepted struct {
 		RunID string `json:"run_id"`
@@ -171,7 +171,7 @@ func TestHatchetNodeRetry(t *testing.T) {
 func TestHatchetCron(t *testing.T) {
 	m, _, h := integrationSetup(t)
 	c := workflow.Cron{Name: fmt.Sprintf("integration-%d", time.Now().UnixNano()), Expression: "* * * * *", Workflow: workflow.Definition{
-		Input: "cron", Nodes: []workflow.Node{{ID: "cron", Model: "cron", Instruction: "cron"}},
+		Input: "cron", Nodes: []workflow.Node{{Executor: "eino", ID: "cron", Model: "cron", Instruction: "cron"}},
 	}}
 	var created rest.CronWorkflows
 	request(t, h, "POST", "/crons", c, 201, &created)
@@ -199,9 +199,9 @@ func TestHatchetWorkerRecovery(t *testing.T) {
 	h := api.New(scheduler.NewBackend(client))
 	first := startProcess(t)
 	d := workflow.Definition{Input: "restart", Nodes: []workflow.Node{
-		{ID: "source", Model: "source", Instruction: "source"},
-		{ID: "recover", Model: "recover", Instruction: "recover", DependsOn: []string{"source"}},
-		{ID: "final", Model: "final", Instruction: "final", DependsOn: []string{"recover"}},
+		{Executor: "eino", ID: "source", Model: "source", Instruction: "source"},
+		{Executor: "eino", ID: "recover", Model: "recover", Instruction: "recover", DependsOn: []string{"source"}},
+		{Executor: "eino", ID: "final", Model: "final", Instruction: "final", DependsOn: []string{"recover"}},
 	}}
 	var accepted struct {
 		RunID string `json:"run_id"`
@@ -264,7 +264,7 @@ func TestHatchetWideLargeInput(t *testing.T) {
 	m, _, h := integrationSetup(t)
 	d := workflow.Definition{Input: strings.Repeat("x", 200*1024)}
 	for i := 0; i < 32; i++ {
-		d.Nodes = append(d.Nodes, workflow.Node{ID: fmt.Sprintf("node%d", i), Model: "wide", Instruction: "test"})
+		d.Nodes = append(d.Nodes, workflow.Node{Executor: "eino", ID: fmt.Sprintf("node%d", i), Model: "wide", Instruction: "test"})
 	}
 	var accepted struct {
 		RunID string `json:"run_id"`
@@ -275,7 +275,7 @@ func TestHatchetWideLargeInput(t *testing.T) {
 		t.Fatalf("nodes=%d calls=%d", len(out.Nodes), m.count("wide"))
 	}
 	firstID := accepted.RunID
-	d = workflow.Definition{Input: "later", Nodes: []workflow.Node{{ID: "later", Model: "later", Instruction: "later"}}}
+	d = workflow.Definition{Input: "later", Nodes: []workflow.Node{{Executor: "eino", ID: "later", Model: "later", Instruction: "later"}}}
 	request(t, h, "POST", "/runs", d, 202, &accepted)
 	_ = waitRun(t, h, accepted.RunID)
 	request(t, h, "GET", "/runs/"+firstID, nil, 200, &out)
@@ -292,6 +292,6 @@ func TestHatchetWideLargeInput(t *testing.T) {
 func TestHatchetRejectBeforeRegistration(t *testing.T) {
 	_, client := integrationClient(t)
 	h := api.New(scheduler.NewBackend(client))
-	d := workflow.Definition{Input: "unregistered", Nodes: []workflow.Node{{ID: "test", Model: "test", Instruction: "test"}}}
+	d := workflow.Definition{Input: "unregistered", Nodes: []workflow.Node{{Executor: "eino", ID: "test", Model: "test", Instruction: "test"}}}
 	request(t, h, "POST", "/runs", d, 503, nil)
 }

@@ -13,9 +13,10 @@ type Definition struct {
 
 type Node struct {
 	ID          string   `json:"id"`
+	Executor    string   `json:"executor"`
 	Description string   `json:"description,omitempty"`
 	Instruction string   `json:"instruction"`
-	Model       string   `json:"model"`
+	Model       string   `json:"model,omitempty"`
 	DependsOn   []string `json:"depends_on,omitempty"`
 }
 
@@ -65,7 +66,10 @@ func (n Node) Validate() error {
 	if !identifier.MatchString(n.ID) {
 		return fmt.Errorf("节点 ID %q 不合法", n.ID)
 	}
-	if strings.TrimSpace(n.Model) == "" || len(n.Model) > 128 {
+	if n.Executor != "eino" && n.Executor != "codex" {
+		return fmt.Errorf("节点 %q 的 executor 必须为 eino 或 codex", n.ID)
+	}
+	if (n.Executor == "eino" || n.Model != "") && (strings.TrimSpace(n.Model) == "" || len(n.Model) > 128) {
 		return fmt.Errorf("节点 %q 的模型名长度必须在 1 至 128 字节之间", n.ID)
 	}
 	if strings.TrimSpace(n.Instruction) == "" || len(n.Instruction) > 16384 {

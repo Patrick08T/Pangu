@@ -1,0 +1,16 @@
+{
+  "input": "为当前项目编写一份简短的中文上手说明，保存为 PANGU_DEMO.md；如果已存在则先阅读并保留用户已有内容。不要提交 Git。",
+  "nodes": [
+    {
+      "id": "plan",
+      "executor": "codex",
+      "instruction": "只读取当前项目，分析结构和启动方式，为 input 给出简短写作计划，不修改文件。"
+    },
+    {
+      "id": "write",
+      "executor": "codex",
+      "instruction": "根据 input 和 parents.plan.text，在当前项目落实写作计划。实际写入文件，并在最终回复中说明修改路径和验证结果。",
+      "depends_on": ["plan"]
+    }
+  ]
+}

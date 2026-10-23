@@ -12,7 +12,7 @@ import (
 	"github.com/hatchet-dev/hatchet/pkg/client/rest"
 )
 
-const validRun = `{"input":"主题","nodes":[{"id":"writer","model":"test","instruction":"撰写"}]}`
+const validRun = `{"input":"主题","nodes":[{"id":"writer","executor":"eino","model":"test","instruction":"撰写"}]}`
 const testID = "eb1d38c7-d454-4bc7-a337-827b76a5e6c8"
 
 type fakeBackend struct {
@@ -62,6 +62,7 @@ func TestRejectInvalidRequests(t *testing.T) {
 		{"/runs", validRun + `{}`, "application/json", 400},
 		{"/runs", `{"nodes":[],"typo":true}`, "application/json", 400},
 		{"/runs", `{"nodes":[]}`, "application/json", 400},
+		{"/runs", `{"nodes":[{"id":"coder","executor":"codex","instruction":"任务","workspace":"/tmp"}]}`, "application/json", 400},
 		{"/runs", validRun, "text/plain", 415},
 		{"/runs", strings.Repeat(" ", 256*1024) + validRun, "application/json", 413},
 		{"/crons", `{"name":"test","expression":"bad","workflow":` + validRun + `}`, "application/json", 400},

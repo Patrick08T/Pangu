@@ -3,18 +3,21 @@
   "nodes": [
     {
       "id": "product",
+      "executor": "eino",
       "description": "产品分析 Agent",
       "model": "替换为服务支持的模型名称",
       "instruction": "根据 input 给出三个最值得实现的用户场景。"
     },
     {
       "id": "engineering",
+      "executor": "eino",
       "description": "工程评估 Agent",
       "model": "替换为服务支持的模型名称",
       "instruction": "根据 input 分析最小实现的工程约束和风险。"
     },
     {
       "id": "summary",
+      "executor": "eino",
       "description": "汇总 Agent",
       "model": "替换为服务支持的模型名称",
       "instruction": "综合 parents 中的产品分析与工程评估，用中文给出首版建议。",

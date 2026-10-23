@@ -16,8 +16,9 @@ import (
 	"github.com/hatchet-dev/hatchet/sdks/go/features"
 )
 
-const WorkflowName = "pangu-orchestrate-v1"
-const NodeTaskName = "pangu-agent-v1"
+const WorkflowName = "pangu-orchestrate-v2"
+const NodeTaskName = "pangu-agent-v2"
+const CodexTaskName = "pangu-codex-v1"
 
 type Backend struct{ client *hatchet.Client }
 
@@ -37,27 +38,40 @@ type RunDetails struct {
 }
 
 func NewWorker(client *hatchet.Client, execute func(context.Context, workflow.NodeInput) (workflow.NodeOutput, error)) (*hatchet.Worker, error) {
-	node := client.NewStandaloneTask(NodeTaskName, func(ctx hatchet.Context, input workflow.NodeInput) (workflow.NodeOutput, error) {
+	run := func(ctx hatchet.Context, input workflow.NodeInput) (workflow.NodeOutput, error) {
 		out, err := execute(ctx.GetContext(), input)
 		out.RunID = ctx.WorkflowRunId()
 		return out, err
-	}, hatchet.WithRetries(2), hatchet.WithRetryBackoff(2, 30), hatchet.WithExecutionTimeout(3*time.Minute))
+	}
+	node := client.NewStandaloneTask(NodeTaskName, run,
+		hatchet.WithRetries(2), hatchet.WithRetryBackoff(2, 30), hatchet.WithExecutionTimeout(3*time.Minute))
+	maximum, strategy := int32(1), hatchet.GroupRoundRobin
+	codex := client.NewStandaloneTask(CodexTaskName, run,
+		hatchet.WithRetries(2), hatchet.WithRetryBackoff(2, 30), hatchet.WithExecutionTimeout(30*time.Minute),
+		hatchet.WithScheduleTimeout(6*time.Hour),
+		hatchet.WithConcurrency(&hatchet.Concurrency{Expression: "'codex-workspace'", MaxRuns: &maximum, LimitStrategy: &strategy}))
 	root := client.NewStandaloneDurableTask(WorkflowName, func(ctx hatchet.DurableContext, d workflow.Definition) (map[string]workflow.NodeOutput, error) {
 		return workflow.Run(d, func(inputs []workflow.NodeInput) ([]workflow.NodeOutput, error) {
-			return runLayer(ctx, node, inputs)
+			return runLayer(ctx, node, codex, inputs)
 		})
 	}, hatchet.WithRetries(2), hatchet.WithExecutionTimeout(6*time.Hour))
-	return client.NewWorker("pangu-worker", hatchet.WithWorkflows(node, root), hatchet.WithSlots(16), hatchet.WithDurableSlots(8))
+	return client.NewWorker("pangu-worker", hatchet.WithWorkflows(node, codex, root), hatchet.WithSlots(16), hatchet.WithDurableSlots(8))
 }
 
-func runLayer(ctx hatchet.DurableContext, task *hatchet.StandaloneTask, inputs []workflow.NodeInput) ([]workflow.NodeOutput, error) {
+func runLayer(ctx hatchet.DurableContext, eino, codex *hatchet.StandaloneTask, inputs []workflow.NodeInput) ([]workflow.NodeOutput, error) {
 	for _, input := range inputs {
 		if err := validateNodeInput(input); err != nil {
 			return nil, err
 		}
 	}
 	refs := make([]*hatchet.WorkflowRunRef, len(inputs))
+	names := make([]string, len(inputs))
 	for i, input := range inputs {
+		task := eino
+		names[i] = NodeTaskName
+		if input.Node.Executor == "codex" {
+			task, names[i] = codex, CodexTaskName
+		}
 		// 保留 DurableContext；逐个派生避免整层输入超过单条 gRPC 消息限制。
 		ref, err := task.RunNoWait(ctx, input, hatchet.WithRunKey(input.Node.ID),
 			hatchet.WithRunMetadata(map[string]string{"pangu_node_id": input.Node.ID}))
@@ -72,7 +86,7 @@ func runLayer(ctx hatchet.DurableContext, task *hatchet.StandaloneTask, inputs [
 		if err != nil {
 			return nil, fmt.Errorf("节点 %s: %w", inputs[i].Node.ID, err)
 		}
-		if err := result.TaskOutput(NodeTaskName).Into(&outputs[i]); err != nil {
+		if err := result.TaskOutput(names[i]).Into(&outputs[i]); err != nil {
 			return nil, err
 		}
 		outputs[i].RunID = refs[i].RunId

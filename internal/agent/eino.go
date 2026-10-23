@@ -13,10 +13,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
-func Execute(ctx context.Context, input workflow.NodeInput) (workflow.NodeOutput, error) {
-	if err := input.Node.Validate(); err != nil {
-		return workflow.NodeOutput{}, err
-	}
+func executeEino(ctx context.Context, input workflow.NodeInput) (workflow.NodeOutput, error) {
 	key := os.Getenv("OPENAI_API_KEY")
 	if key == "" {
 		return workflow.NodeOutput{}, fmt.Errorf("缺少 OPENAI_API_KEY")
@@ -63,12 +60,6 @@ func Execute(ctx context.Context, input workflow.NodeInput) (workflow.NodeOutput
 				output.Text = message.Content
 			}
 		}
-	}
-	if err := ctx.Err(); err != nil {
-		return workflow.NodeOutput{}, err
-	}
-	if output.Text == "" || len(output.Text) > 16384 {
-		return workflow.NodeOutput{}, fmt.Errorf("Agent 输出为空或超过 16 KiB")
 	}
 	return output, nil
 }
