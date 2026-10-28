@@ -1,0 +1,3224 @@
+openapi: 3.0.3
+info:
+  title: Pangu 本地 API
+  version: 0.1.0
+  description: Pangu Agent 工厂 API。飞书会话或项目 API Token 认证；仅 healthz 与飞书授权入口公开。配置权限与会话每次查询原始数据库。
+servers:
+  - url: /api
+paths:
+  /projects:
+    get:
+      operationId: listProjects
+      responses:
+        '200':
+          description: 当前命名空间已登记的项目
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Project'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: registerProject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectRegistration'
+      responses:
+        '201':
+          description: 项目已登记，执行前在绑定 Worker 校验源目录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '413':
+          $ref: '#/components/responses/Error'
+        '415':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+      parameters:
+        - name: X-CSRF-Token
+          in: header
+          description: 浏览器会话修改操作必填，取自 /auth/me；同时必须提供与 PANGU_PUBLIC_URL 完全一致的 Origin。API Token 无此要求。
+          schema:
+            type: string
+  /healthz:
+    get:
+      operationId: getHealth
+      responses:
+        '200':
+          description: 进程存活
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+      security: []
+  /readyz:
+    get:
+      operationId: getReadiness
+      responses:
+        '200':
+          $ref: '#/components/responses/Readiness'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Readiness'
+  /openapi.yaml:
+    get:
+      operationId: getContract
+      responses:
+        '200':
+          description: 当前 API 契约
+          content:
+            application/yaml:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+  /workflows/validate:
+    post:
+      operationId: validateWorkflow
+      requestBody:
+        $ref: '#/components/requestBodies/Workflow'
+      responses:
+        '200':
+          description: 仅校验定义，返回稳定分层；不访问模型或调度任务
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Validation'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '413':
+          $ref: '#/components/responses/Error'
+        '415':
+          $ref: '#/components/responses/Error'
+      parameters:
+        - name: X-CSRF-Token
+          in: header
+          description: 浏览器会话修改操作必填，取自 /auth/me；同时必须提供与 PANGU_PUBLIC_URL 完全一致的 Origin。API Token 无此要求。
+          schema:
+            type: string
+  /runs:
+    get:
+      operationId: listRuns
+      parameters:
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum:
+              - queued
+              - running
+              - succeeded
+              - failed
+              - cancelled
+              - cancelling
+        - name: since
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: until
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: project_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: 按项目筛选，同时检查当前身份授权。
+      responses:
+        '200':
+          description: 当前命名空间的根运行；后续页沿用返回的 since/until，状态仍实时变化
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunList'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: submitRun
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - name: X-CSRF-Token
+          in: header
+          description: 浏览器会话修改操作必填，取自 /auth/me；同时必须提供与 PANGU_PUBLIC_URL 完全一致的 Origin。API Token 无此要求。
+          schema:
+            type: string
+      requestBody:
+        $ref: '#/components/requestBodies/Workflow'
+      responses:
+        '202':
+          description: 提交意图已持久化；pending 代表等待交接/对账，accepted 才有 run_id；不表示执行完成
+          headers:
+            Location:
+              schema:
+                type: string
+              description: 提交请求查询地址
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Submission'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '413':
+          $ref: '#/components/responses/Error'
+        '415':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+  /requests/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: getSubmission
+      responses:
+        '200':
+          description: 当前命名空间的持久提交请求
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Submission'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+  /workflows/preflight:
+    post:
+      operationId: preflightWorkflow
+      requestBody:
+        $ref: '#/components/requestBodies/Workflow'
+      responses:
+        '200':
+          $ref: '#/components/responses/Preflight'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '413':
+          $ref: '#/components/responses/Error'
+        '415':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Preflight'
+      parameters:
+        - name: X-CSRF-Token
+          in: header
+          description: 浏览器会话修改操作必填，取自 /auth/me；同时必须提供与 PANGU_PUBLIC_URL 完全一致的 Origin。API Token 无此要求。
+          schema:
+            type: string
+  /runs/{id}/cancel:
+    post:
+      operationId: cancelRun
+      parameters:
+        - $ref: '#/components/parameters/ID'
+        - name: X-CSRF-Token
+          in: header
+          description: 浏览器会话修改操作必填，取自 /auth/me；同时必须提供与 PANGU_PUBLIC_URL 完全一致的 Origin。API Token 无此要求。
+          schema:
+            type: string
+      responses:
+        '202':
+          description: 已受理取消意图；终态运行返回 requested=false；不代表执行器已经停止
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - run_id
+                  - requested
+                properties:
+                  run_id:
+                    type: string
+                    format: uuid
+                  requested:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+  /runs/{id}:
+    get:
+      operationId: getRun
+      parameters:
+        - $ref: '#/components/parameters/ID'
+      responses:
+        '200':
+          description: 当前命名空间的根运行及直接子节点；刚提交的运行可能暂时未同步
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunDetails'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+  /runs/{id}/attempts:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listAttempts
+      parameters:
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: 尝试摘要；完整日志及原生命令证据通过尝试详情获取
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttemptPage'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '410':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+  /runs/{id}/nodes/{node}/attempts/{attempt}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - name: node
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: attempt
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    get:
+      operationId: getAttempt
+      responses:
+        '200':
+          description: 已脱敏的单次执行诊断和原生命令证据；不包含内部推理
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Attempt'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '410':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+  /runs/{id}/artifacts:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listArtifacts
+      responses:
+        '200':
+          description: 当前成功检查点到原基准的不可变文件清单
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArtifactManifest'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '410':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+  /runs/{id}/artifacts/{artifact}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - name: artifact
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^(?:[a-f0-9]{32}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$
+    get:
+      operationId: downloadArtifact
+      responses:
+        '200':
+          description: 最大 10 MiB；附件下载，不执行 HTML 或其他活动内容
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+            text/plain:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '410':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+  /runs/{id}/artifacts/{artifact}/diff:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - name: artifact
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^(?:[a-f0-9]{32}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$
+    get:
+      operationId: getArtifactDiff
+      responses:
+        '200':
+          description: 最多 1 MiB 的文本差异；二进制只有文件元数据
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - file
+                  - diff
+                  - truncated
+                properties:
+                  file:
+                    $ref: '#/components/schemas/ArtifactFile'
+                  diff:
+                    type: string
+                  truncated:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '410':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+  /runs/{id}/artifacts.zip:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: exportArtifacts
+      responses:
+        '200':
+          description: ZIP 包含新/修改文件及删除清单；最大 100 MiB 原始数据、1000 个产物；遇疑似凭据整包拒绝
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '410':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+  /crons:
+    get:
+      operationId: listCrons
+      parameters:
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            default: 0
+        - name: project_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: 按项目筛选，同时检查当前身份授权。
+      responses:
+        '200':
+          description: 按权限过滤；空页仍可能存在 next_offset。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CronPage'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: createCron
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - name
+                - expression
+                - workflow
+              properties:
+                name:
+                  type: string
+                  description: 显示名称，可含中文和空格；UTF-8 最多128字节，不含控制字符。
+                  minLength: 1
+                  maxLength: 128
+                expression:
+                  type: string
+                  description: UTC 五字段表达式
+                workflow:
+                  $ref: '#/components/schemas/Workflow'
+      responses:
+        '201':
+          description: 计划已持久登记并注册到 Hatchet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Schedule'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '413':
+          $ref: '#/components/responses/Error'
+        '415':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+      parameters:
+        - name: X-CSRF-Token
+          in: header
+          description: 浏览器会话修改操作必填，取自 /auth/me；同时必须提供与 PANGU_PUBLIC_URL 完全一致的 Origin。API Token 无此要求。
+          schema:
+            type: string
+  /crons/{id}:
+    delete:
+      operationId: deleteCron
+      parameters:
+        - $ref: '#/components/parameters/ID'
+        - name: X-CSRF-Token
+          in: header
+          description: 浏览器会话修改操作必填，取自 /auth/me；同时必须提供与 PANGU_PUBLIC_URL 完全一致的 Origin。API Token 无此要求。
+          schema:
+            type: string
+      responses:
+        '204':
+          description: 已删除，不取消已触发运行
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+    put:
+      operationId: editCron
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-CSRF-Token
+          in: header
+          description: 浏览器会话修改操作必填，取自 /auth/me；同时必须提供与 PANGU_PUBLIC_URL 完全一致的 Origin。API Token 无此要求。
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 操作结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Schedule'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                revision:
+                  type: integer
+                paused:
+                  type: boolean
+                cron:
+                  type: object
+                  additionalProperties: false
+                  required:
+                    - name
+                    - expression
+                    - workflow
+                  properties:
+                    name:
+                      type: string
+                      pattern: ^[a-zA-Z][a-zA-Z0-9_-]{0,63}$
+                    expression:
+                      type: string
+                      description: UTC 五字段表达式
+                    workflow:
+                      $ref: '#/components/schemas/Workflow'
+              required:
+                - revision
+                - paused
+                - cron
+    get:
+      operationId: getCron
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 读取计划原始状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Schedule'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+  /crons/{id}/fires:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listScheduleFires
+      parameters:
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: 逐次触发与跳过记录，每页最多 100 条
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ScheduleFire'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+  /catalog:
+    get:
+      operationId: listCatalog
+      parameters:
+        - name: kind
+          in: query
+          schema:
+            type: string
+        - name: project_id
+          in: query
+          schema:
+            type: string
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 按权限过滤；空页仍可能存在 next_offset。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogPage'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: createCatalog
+      parameters:
+        - name: X-CSRF-Token
+          in: header
+          description: 浏览器会话修改操作必填，取自 /auth/me；同时必须提供与 PANGU_PUBLIC_URL 完全一致的 Origin。API Token 无此要求。
+          schema:
+            type: string
+      responses:
+        '201':
+          description: 操作结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogObject'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogCreate'
+  /catalog/{id}:
+    get:
+      operationId: getCatalog
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 操作结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogObject'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+  /catalog/{id}/draft:
+    put:
+      operationId: saveCatalog
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-CSRF-Token
+          in: header
+          description: 浏览器会话修改操作必填，取自 /auth/me；同时必须提供与 PANGU_PUBLIC_URL 完全一致的 Origin。API Token 无此要求。
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 操作结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogObject'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                revision:
+                  type: integer
+                name:
+                  type: string
+                spec:
+                  $ref: '#/components/schemas/CatalogSpec'
+              required:
+                - revision
+                - name
+                - spec
+  /catalog/{id}/publish:
+    post:
+      operationId: publishCatalog
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-CSRF-Token
+          in: header
+          description: 浏览器会话修改操作必填，取自 /auth/me；同时必须提供与 PANGU_PUBLIC_URL 完全一致的 Origin。API Token 无此要求。
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 操作结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogVersion'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                revision:
+                  type: integer
+              required:
+                - revision
+  /catalog/{id}/archive:
+    post:
+      operationId: archiveCatalog
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-CSRF-Token
+          in: header
+          description: 浏览器会话修改操作必填，取自 /auth/me；同时必须提供与 PANGU_PUBLIC_URL 完全一致的 Origin。API Token 无此要求。
+          schema:
+            type: string
+      responses:
+        '204':
+          description: 已归档或恢复；历史版本保留
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                archived:
+                  type: boolean
+              required:
+                - archived
+  /catalog/{id}/versions:
+    get:
+      operationId: catalogVersions
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        '200':
+          description: 操作结果
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CatalogVersion'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+      description: 每页最多 100 条；offset 翻页，按发布序号倒序。
+  /versions/{id}:
+    get:
+      operationId: catalogVersion
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 操作结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogVersion'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+  /versions/{id}/bind:
+    post:
+      operationId: bindCatalog
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-CSRF-Token
+          in: header
+          description: 浏览器会话修改操作必填，取自 /auth/me；同时必须提供与 PANGU_PUBLIC_URL 完全一致的 Origin。API Token 无此要求。
+          schema:
+            type: string
+      responses:
+        '201':
+          description: 操作结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogObject'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                project_id:
+                  type: string
+                  format: uuid
+                name:
+                  type: string
+                connection_version:
+                  type: string
+                  format: uuid
+              required:
+                - project_id
+                - name
+  /versions/{id}/run:
+    post:
+      operationId: runVersion
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9._:-]{1,128}$
+        - name: X-CSRF-Token
+          in: header
+          description: 浏览器会话修改操作必填，取自 /auth/me；同时必须提供与 PANGU_PUBLIC_URL 完全一致的 Origin。API Token 无此要求。
+          schema:
+            type: string
+      responses:
+        '202':
+          description: 操作结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Submission'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                input:
+                  type: string
+              required: []
+  /runs/{id}/rerun:
+    post:
+      operationId: rerun
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9._:-]{1,128}$
+        - name: X-CSRF-Token
+          in: header
+          description: 浏览器会话修改操作必填，取自 /auth/me；同时必须提供与 PANGU_PUBLIC_URL 完全一致的 Origin。API Token 无此要求。
+          schema:
+            type: string
+      responses:
+        '202':
+          description: 操作结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Submission'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '410':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+      description: 从原定义及原 Git 基准整次执行，新建运行；不接受请求体或查询参数。
+  /crons/preview:
+    get:
+      operationId: cronPreview
+      parameters:
+        - name: expression
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 操作结果
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                  format: date-time
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+  /catalog/import:
+    post:
+      operationId: importCatalog
+      parameters:
+        - name: X-CSRF-Token
+          in: header
+          description: 浏览器会话修改操作必填，取自 /auth/me；同时必须提供与 PANGU_PUBLIC_URL 完全一致的 Origin。API Token 无此要求。
+          schema:
+            type: string
+      responses:
+        '201':
+          description: 操作结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogObject'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogDocument'
+  /catalog/{id}/export:
+    get:
+      operationId: exportCatalog
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 操作结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogDocument'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+  /versions/{id}/export:
+    get:
+      operationId: exportCatalogVersion
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 操作结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogDocument'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+  /auth/me:
+    get:
+      operationId: getIdentity
+      responses:
+        '200':
+          description: 操作结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Actor'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+  /auth/logout:
+    post:
+      operationId: logout
+      responses:
+        '204':
+          description: 操作结果
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+      parameters:
+        - name: X-CSRF-Token
+          in: header
+          description: 浏览器会话修改操作必填，取自 /auth/me；同时必须提供与 PANGU_PUBLIC_URL 完全一致的 Origin。API Token 无此要求。
+          schema:
+            type: string
+  /auth/memberships:
+    get:
+      operationId: listMemberships
+      responses:
+        '200':
+          description: 操作结果
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Membership'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+  /auth/tokens:
+    get:
+      operationId: listAPITokens
+      responses:
+        '200':
+          description: 操作结果
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/APIToken'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: issueAPIToken
+      responses:
+        '201':
+          description: 操作结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenIssued'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenIssue'
+      parameters:
+        - name: X-CSRF-Token
+          in: header
+          description: 浏览器会话修改操作必填，取自 /auth/me；同时必须提供与 PANGU_PUBLIC_URL 完全一致的 Origin。API Token 无此要求。
+          schema:
+            type: string
+  /auth/tokens/{id}:
+    delete:
+      operationId: revokeAPIToken
+      responses:
+        '204':
+          description: 操作结果
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-CSRF-Token
+          in: header
+          description: 浏览器会话修改操作必填，取自 /auth/me；同时必须提供与 PANGU_PUBLIC_URL 完全一致的 Origin。API Token 无此要求。
+          schema:
+            type: string
+  /projects/{id}/members:
+    get:
+      operationId: listMembers
+      responses:
+        '200':
+          description: 操作结果
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Member'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+    put:
+      operationId: grantMember
+      responses:
+        '200':
+          description: 操作结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Actor'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                open_id:
+                  type: string
+                role:
+                  type: string
+                  enum:
+                    - manager
+                    - operator
+                    - viewer
+              required:
+                - open_id
+                - role
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-CSRF-Token
+          in: header
+          description: 浏览器会话修改操作必填，取自 /auth/me；同时必须提供与 PANGU_PUBLIC_URL 完全一致的 Origin。API Token 无此要求。
+          schema:
+            type: string
+  /projects/{id}/members/{user}:
+    delete:
+      operationId: removeMember
+      responses:
+        '204':
+          description: 操作结果
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: user
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-CSRF-Token
+          in: header
+          description: 浏览器会话修改操作必填，取自 /auth/me；同时必须提供与 PANGU_PUBLIC_URL 完全一致的 Origin。API Token 无此要求。
+          schema:
+            type: string
+  /users/{id}/disable:
+    post:
+      operationId: disableUser
+      responses:
+        '204':
+          description: 操作结果
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-CSRF-Token
+          in: header
+          description: 浏览器会话修改操作必填，取自 /auth/me；同时必须提供与 PANGU_PUBLIC_URL 完全一致的 Origin。API Token 无此要求。
+          schema:
+            type: string
+  /users/{id}/enable:
+    post:
+      operationId: enableUser
+      responses:
+        '204':
+          description: 操作结果
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-CSRF-Token
+          in: header
+          description: 浏览器会话修改操作必填，取自 /auth/me；同时必须提供与 PANGU_PUBLIC_URL 完全一致的 Origin。API Token 无此要求。
+          schema:
+            type: string
+  /auth/login:
+    get:
+      operationId: feishuLogin
+      security: []
+      responses:
+        '302':
+          description: 设置浏览器状态 Cookie 并跳转飞书
+        '503':
+          $ref: '#/components/responses/Error'
+  /auth/callback:
+    get:
+      operationId: feishuCallback
+      security: []
+      parameters:
+        - name: state
+          in: query
+          schema:
+            type: string
+        - name: code
+          in: query
+          schema:
+            type: string
+        - name: error
+          in: query
+          schema:
+            type: string
+      responses:
+        '303':
+          description: 一次性状态和 PKCE 校验后设置会话，跳转站点首页
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+  /audit:
+    get:
+      operationId: listAudit
+      responses:
+        '200':
+          description: 操作结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditPage'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+      parameters:
+        - name: project_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+  /versions/{id}/preflight:
+    post:
+      operationId: preflightVersion
+      description: 项目 Agent、流程或模型连接的 Worker 诊断；不调用收费模型，连接诊断仅管理者可用。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-CSRF-Token
+          in: header
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                input:
+                  type: string
+              required:
+                - input
+      responses:
+        '200':
+          description: 配置诊断通过，不代表模型服务调用成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Preflight'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Preflight'
+  /runs/{id}/events:
+    get:
+      operationId: runEvents
+      description: 按根运行或其直接子节点分页读取脱敏调度事件，禁止跨运行节点查询。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: node_run_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: 事件分页
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventPage'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '410':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+  /retention:
+    get:
+      operationId: previewRetention
+      description: 管理员预览当前 Worker 最旧的最多100条候选；活动运行受保护。
+      responses:
+        '200':
+          description: 逐项清理状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetentionPage'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: executeRetention
+      description: 管理员执行一批清理；每项独立检查终态、租约和托管目录，中断可重试。
+      responses:
+        '200':
+          description: 逐项清理状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetentionPage'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+      parameters:
+        - name: X-CSRF-Token
+          in: header
+          description: 浏览器会话写操作必须携带；API Token 请求不适用。
+          schema:
+            type: string
+  /retention/history:
+    get:
+      operationId: listRetentionHistory
+      description: 管理员分页查询独立保留180天的清理记录。
+      parameters:
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: 清理记录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetentionHistoryPage'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+components:
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        pattern: ^[A-Za-z0-9._:-]{1,128}$
+    ID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  requestBodies:
+    Workflow:
+      required: true
+      description: 请求体最多 256 KiB；字节限制和依赖完整性由服务端校验
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Workflow'
+  responses:
+    Preflight:
+      description: 在实际 Worker 检查环境；Eino configured 不代表凭据或模型可用，未发送收费请求
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: '#/components/schemas/Preflight'
+              - $ref: '#/components/schemas/Error'
+    Error:
+      description: 请求或服务错误
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Readiness:
+      description: 产品数据库连接/迁移与 Hatchet 编排注册；不检查在线 Worker、模型和工作目录
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Readiness'
+  schemas:
+    Submission:
+      type: object
+      required:
+        - request_id
+        - project_id
+        - operation
+        - status
+        - created_at
+      properties:
+        request_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        operation:
+          type: string
+          enum:
+            - submit
+            - cron
+            - rerun
+        status:
+          type: string
+          enum:
+            - pending
+            - accepted
+        run_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+          format: uuid
+    Schedule:
+      type: object
+      required:
+        - id
+        - name
+        - expression
+        - workflow
+        - revision
+        - paused
+        - deleted
+        - ready
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        expression:
+          type: string
+        workflow:
+          $ref: '#/components/schemas/Workflow'
+        revision:
+          type: integer
+          minimum: 1
+        paused:
+          type: boolean
+        deleted:
+          type: boolean
+        ready:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+          format: uuid
+    ScheduleFire:
+      type: object
+      required:
+        - schedule_id
+        - slot
+        - status
+        - reason
+      properties:
+        schedule_id:
+          type: string
+          format: uuid
+        slot:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum:
+            - pending
+            - accepted
+            - skipped
+        reason:
+          type: string
+        request_id:
+          type: string
+          format: uuid
+    ProjectRegistration:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - source
+        - branch
+        - worker_id
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        source:
+          type: string
+          description: 绑定 Worker 上的本地 Git 项目绝对路径
+        branch:
+          type: string
+          description: 本地分支，不自动 fetch
+        worker_id:
+          type: string
+        verification:
+          type: array
+          maxItems: 32
+          items:
+            type: string
+            maxLength: 1024
+          description: 管理员登记的验证命令参数数组，首项为Worker上的绝对程序路径；每个Codex节点成功后、检查点发布前执行，最长30秒。禁止凭据参数。不配置时为空数组。
+    Project:
+      type: object
+      required:
+        - id
+        - name
+        - source
+        - branch
+        - worker_id
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        source:
+          type: string
+        branch:
+          type: string
+        worker_id:
+          type: string
+        verification:
+          type: array
+          maxItems: 32
+          items:
+            type: string
+            maxLength: 1024
+          description: 管理员登记的验证命令参数数组，首项为Worker上的绝对程序路径；每个Codex节点成功后、检查点发布前执行，最长30秒。禁止凭据参数。不配置时为空数组。
+    Preflight:
+      type: object
+      required:
+        - ready
+        - checks
+      properties:
+        ready:
+          type: boolean
+        checks:
+          type: array
+          items:
+            type: object
+            required:
+              - component
+              - status
+            properties:
+              component:
+                type: string
+              status:
+                type: string
+                enum:
+                  - ready
+                  - configured
+                  - unavailable
+    ArtifactFile:
+      type: object
+      required:
+        - id
+        - path
+        - change
+        - size
+        - binary
+      properties:
+        id:
+          type: string
+          description: Git 文件为 32 位十六进制摘要；产品经理报告为 UUID。
+        path:
+          type: string
+          description: 仓库相对路径，不是本机绝对路径
+        change:
+          type: string
+          enum:
+            - A
+            - M
+            - D
+            - T
+        size:
+          type: integer
+          format: int64
+          minimum: 0
+        sha256:
+          type: string
+        binary:
+          type: boolean
+        blocked:
+          type: string
+          enum:
+            - sensitive
+            - symlink
+            - unsafe_path
+            - too_large
+    ArtifactManifest:
+      type: object
+      required:
+        - run_id
+        - base_commit
+        - head_commit
+        - files
+        - total_bytes
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        base_commit:
+          type: string
+        head_commit:
+          type: string
+        files:
+          type: array
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/ArtifactFile'
+        total_bytes:
+          type: integer
+          format: int64
+    AttemptPage:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/Attempt'
+        next_offset:
+          type: integer
+          minimum: 0
+    Attempt:
+      type: object
+      required:
+        - run_id
+        - node_run_id
+        - node_id
+        - attempt
+        - started_at
+        - status
+        - message
+        - truncated
+        - evidence
+        - evidence_truncated
+        - category
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        node_run_id:
+          type: string
+          format: uuid
+        node_id:
+          type: string
+        attempt:
+          type: integer
+          minimum: 1
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum:
+            - running
+            - succeeded
+            - failed
+            - cancelled
+        message:
+          type: string
+        truncated:
+          type: boolean
+        evidence_truncated:
+          type: boolean
+        evidence:
+          type: array
+          items:
+            type: object
+            required:
+              - id
+              - command
+              - exit_code
+              - output
+              - truncated
+            properties:
+              id:
+                type: string
+              command:
+                type: string
+              exit_code:
+                type: integer
+              output:
+                type: string
+              truncated:
+                type: boolean
+        category:
+          type: string
+    RunSummary:
+      type: object
+      required:
+        - id
+        - status
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+            - queued
+            - running
+            - cancelling
+            - succeeded
+            - failed
+            - cancelled
+            - unknown
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+    RunError:
+      type: object
+      required:
+        - category
+        - message
+        - truncated
+      properties:
+        category:
+          type: string
+        message:
+          type: string
+          description: 已脱敏的诊断，最多64KiB
+        truncated:
+          type: boolean
+    NodeRun:
+      allOf:
+        - $ref: '#/components/schemas/RunSummary'
+        - type: object
+          required:
+            - node_id
+            - task_id
+            - executor
+            - attempt
+          properties:
+            node_id:
+              type: string
+            task_id:
+              type: string
+              format: uuid
+            executor:
+              type: string
+            attempt:
+              type: integer
+              minimum: 1
+            output:
+              type: string
+            error:
+              $ref: '#/components/schemas/RunError'
+    RunEvent:
+      type: object
+      required:
+        - id
+        - task_id
+        - attempt
+        - type
+        - time
+        - message
+        - truncated
+      properties:
+        id:
+          type: integer
+        task_id:
+          type: string
+          format: uuid
+        attempt:
+          type: integer
+          minimum: 1
+        type:
+          type: string
+        time:
+          type: string
+          format: date-time
+        message:
+          type: string
+        truncated:
+          type: boolean
+    RunDetails:
+      allOf:
+        - $ref: '#/components/schemas/RunSummary'
+        - type: object
+          required:
+            - nodes
+            - events
+            - attempts
+            - cancel_requested
+            - stop_confirmed
+            - logs_expired
+          properties:
+            nodes:
+              type: array
+              items:
+                $ref: '#/components/schemas/NodeRun'
+            events:
+              type: array
+              items:
+                $ref: '#/components/schemas/RunEvent'
+            attempts:
+              type: array
+              items:
+                $ref: '#/components/schemas/Attempt'
+            attempts_next_offset:
+              type: integer
+              minimum: 0
+            cancel_requested:
+              type: boolean
+            stop_confirmed:
+              type: boolean
+              description: 根/子任务终态且没有未确认停止的执行尝试
+            error:
+              $ref: '#/components/schemas/RunError'
+            definition:
+              $ref: '#/components/schemas/Workflow'
+            source_run_id:
+              type: string
+              format: uuid
+            logs_expired:
+              type: boolean
+              description: 日志、产物与重跑基准已到期。
+    RunList:
+      type: object
+      required:
+        - items
+        - since
+        - until
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RunSummary'
+        next_offset:
+          type: integer
+          minimum: 0
+        since:
+          type: string
+          format: date-time
+        until:
+          type: string
+          format: date-time
+    Health:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+    Readiness:
+      type: object
+      required:
+        - status
+        - scope
+        - checks
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - not_ready
+        scope:
+          type: string
+          enum:
+            - api_dependencies
+        checks:
+          type: object
+          required:
+            - database
+            - hatchet_registration
+          properties:
+            database:
+              type: string
+              enum:
+                - ok
+                - unavailable
+            hatchet_registration:
+              type: string
+              enum:
+                - ok
+                - unavailable
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+    Validation:
+      type: object
+      required:
+        - valid
+        - layers
+      properties:
+        valid:
+          type: boolean
+          enum:
+            - true
+        layers:
+          type: array
+          items:
+            type: array
+            items:
+              type: string
+    Workflow:
+      type: object
+      additionalProperties: false
+      required:
+        - nodes
+      properties:
+        project_id:
+          type: string
+          format: uuid
+          description: Codex 编排必填；必须为当前命名空间登记的项目
+        input:
+          type: string
+        nodes:
+          type: array
+          minItems: 1
+          maxItems: 32
+          items:
+            $ref: '#/components/schemas/Node'
+        version_id:
+          type: string
+          format: uuid
+        input_schema:
+          $ref: '#/components/schemas/Shape'
+    Node:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - executor
+        - instruction
+      properties:
+        id:
+          type: string
+          pattern: ^[a-zA-Z][a-zA-Z0-9_-]{0,63}$
+        executor:
+          type: string
+          enum:
+            - eino
+            - codex
+        instruction:
+          type: string
+          pattern: \S
+          description: 非空，最多 16 KiB
+        description:
+          type: string
+          description: 最多 1 KiB
+        model:
+          type: string
+          description: Eino 必填；提供时非空且最多 128 字节
+        depends_on:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+        agent_version:
+          type: string
+          format: uuid
+        connection_version:
+          type: string
+          format: uuid
+        output_schema:
+          $ref: '#/components/schemas/Shape'
+        bindings:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/FieldBinding'
+        policy:
+          $ref: '#/components/schemas/Policy'
+        role:
+          type: string
+          enum:
+            - product_manager
+        mode:
+          type: string
+          enum:
+            - research
+            - competition
+            - planning
+            - design
+        read_only:
+          type: boolean
+          description: 仅 Codex：设置原生 read-only 沙箱；写入变更不能发布检查点。
+      oneOf:
+        - required:
+            - model
+          properties:
+            executor:
+              type: string
+              enum:
+                - eino
+            model:
+              type: string
+              pattern: \S
+        - properties:
+            executor:
+              type: string
+              enum:
+                - codex
+    Shape:
+      type: object
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+          enum:
+            - object
+            - array
+            - string
+            - number
+            - integer
+            - boolean
+            - 'null'
+        properties:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/Shape'
+        required:
+          type: array
+          items:
+            type: string
+        items:
+          $ref: '#/components/schemas/Shape'
+      required:
+        - type
+      description: 无引用与脚本的 JSON Schema 子集；对象拒绝未知字段，最多 6 层、每层 64 个字段、整体 16 KiB。
+    FieldBinding:
+      type: object
+      additionalProperties: false
+      properties:
+        from:
+          type: string
+        pointer:
+          type: string
+        type:
+          type: string
+      required:
+        - from
+        - pointer
+        - type
+      description: 只读取 $input 或声明的直接上游；pointer 为 JSON Pointer，无隐式类型转换。
+    Connection:
+      type: object
+      additionalProperties: false
+      properties:
+        base_url:
+          type: string
+          format: uri
+        model:
+          type: string
+        secret_ref:
+          type: string
+          pattern: ^PANGU_SECRET_[A-Z][A-Z0-9_]{0,63}$
+      required:
+        - base_url
+        - model
+        - secret_ref
+      description: 仅保存服务端凭据变量名；版本/API 不包含密钥，执行时读取原始来源。
+    FlowBinding:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        agent_version:
+          type: string
+          format: uuid
+        depends_on:
+          type: array
+          items:
+            type: string
+        bindings:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/FieldBinding'
+      required:
+        - id
+        - agent_version
+    Flow:
+      type: object
+      additionalProperties: false
+      properties:
+        parameters:
+          $ref: '#/components/schemas/Shape'
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/FlowBinding'
+      required:
+        - nodes
+    CatalogSpec:
+      type: object
+      additionalProperties: false
+      properties:
+        agent:
+          $ref: '#/components/schemas/Node'
+        template_version:
+          type: string
+          format: uuid
+        flow:
+          $ref: '#/components/schemas/Flow'
+        connection:
+          $ref: '#/components/schemas/Connection'
+      required: []
+    CatalogCreate:
+      type: object
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          enum:
+            - template
+            - agent
+            - workflow
+            - connection
+        project_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        spec:
+          $ref: '#/components/schemas/CatalogSpec'
+      required:
+        - kind
+        - name
+        - spec
+    CatalogObject:
+      type: object
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          enum:
+            - template
+            - agent
+            - workflow
+            - connection
+        project_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        spec:
+          $ref: '#/components/schemas/CatalogSpec'
+        id:
+          type: string
+          format: uuid
+        revision:
+          type: integer
+        archived:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - kind
+        - name
+        - spec
+        - revision
+        - archived
+        - created_at
+    CatalogVersion:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        object_id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+        project_id:
+          type: string
+          format: uuid
+        number:
+          type: integer
+        source_revision:
+          type: integer
+        spec:
+          $ref: '#/components/schemas/CatalogSpec'
+        created_at:
+          type: string
+          format: date-time
+        archived:
+          type: boolean
+      required:
+        - id
+        - object_id
+        - kind
+        - number
+        - source_revision
+        - spec
+        - created_at
+        - archived
+    Policy:
+      type: object
+      additionalProperties: false
+      properties:
+        retries:
+          type: integer
+          minimum: 0
+          maximum: 2
+        timeout_seconds:
+          type: integer
+          minimum: 1
+          maximum: 1800
+        tool_calls:
+          type: integer
+          minimum: 0
+          maximum: 10
+      required:
+        - retries
+        - timeout_seconds
+        - tool_calls
+      description: Eino 超时上限 180 秒，Codex 1800 秒；工具上限由 Eino 受控工具执行，原生 Codex 工具次数边界仍在验证。缺省重试 2 次，工具 10 次。
+    CatalogDocument:
+      type: object
+      additionalProperties: false
+      properties:
+        format:
+          type: string
+          enum:
+            - pangu.catalog.v1
+        kind:
+          type: string
+          enum:
+            - template
+            - agent
+            - workflow
+            - connection
+        project_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        spec:
+          $ref: '#/components/schemas/CatalogSpec'
+      required:
+        - format
+        - kind
+        - name
+        - spec
+    ResearchBrief:
+      type: object
+      additionalProperties: false
+      properties:
+        question:
+          type: string
+        audience:
+          type: string
+        market:
+          type: string
+        time_scope:
+          type: string
+        context:
+          type: string
+        constraints:
+          type: string
+        public_queries:
+          type: array
+          items:
+            type: string
+        urls:
+          type: array
+          items:
+            type: string
+        documents:
+          type: array
+          items:
+            type: string
+        competitors:
+          type: array
+          items:
+            type: string
+        dimensions:
+          type: array
+          items:
+            type: string
+      required:
+        - question
+        - audience
+        - market
+        - time_scope
+        - context
+        - constraints
+      description: 产品经理 input 使用此结构的 JSON 字符串；各列表最多 10 项。竞品模式要求 competitors/dimensions，调研要求至少一个授权资料来源。
+    Actor:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        admin:
+          type: boolean
+        csrf:
+          type: string
+      required:
+        - id
+        - name
+        - admin
+    Membership:
+      type: object
+      additionalProperties: false
+      properties:
+        project_id:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum:
+            - manager
+            - operator
+            - viewer
+      required:
+        - project_id
+        - role
+    Member:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        open_id:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+          enum:
+            - manager
+            - operator
+            - viewer
+        enabled:
+          type: boolean
+        disabled:
+          type: boolean
+      required:
+        - id
+        - open_id
+        - name
+        - role
+        - enabled
+        - disabled
+    APIToken:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        project_id:
+          type: string
+          format: uuid
+        scopes:
+          type: array
+          items:
+            type: string
+            enum:
+              - read
+              - run
+              - configure
+              - schedule
+              - manage_run
+              - manage_schedule
+              - manage_connections
+        expires_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - project_id
+        - scopes
+        - expires_at
+    TokenIssue:
+      type: object
+      additionalProperties: false
+      properties:
+        project_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+            enum:
+              - read
+              - run
+              - configure
+              - schedule
+              - manage_run
+              - manage_schedule
+              - manage_connections
+        expires_at:
+          type: string
+          format: date-time
+      required:
+        - project_id
+        - name
+        - scopes
+        - expires_at
+    TokenIssued:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        project_id:
+          type: string
+          format: uuid
+        scopes:
+          type: array
+          items:
+            type: string
+            enum:
+              - read
+              - run
+              - configure
+              - schedule
+              - manage_run
+              - manage_schedule
+              - manage_connections
+        expires_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+        value:
+          type: string
+          description: 仅此响应返回一次；服务端仅保存摘要。
+      required:
+        - id
+        - name
+        - project_id
+        - scopes
+        - expires_at
+        - value
+    CatalogPage:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogObject'
+        next_offset:
+          type: integer
+          minimum: 0
+      required:
+        - items
+    CronPage:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Schedule'
+        next_offset:
+          type: integer
+          minimum: 0
+      required:
+        - items
+    AuditEntry:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        actor_id:
+          type: string
+          format: uuid
+        token_id:
+          type: string
+          format: uuid
+        request_id:
+          type: string
+          format: uuid
+        action:
+          type: string
+        object_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        result_id:
+          type: string
+          format: uuid
+        result_version:
+          type: integer
+        outcome:
+          type: string
+          enum:
+            - pending
+            - unknown
+            - succeeded
+            - rejected
+            - failed
+        http_status:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        target_id:
+          type: string
+          format: uuid
+        role:
+          type: string
+      required:
+        - id
+        - actor_id
+        - request_id
+        - action
+        - outcome
+        - created_at
+    AuditPage:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEntry'
+        next_offset:
+          type: integer
+          minimum: 0
+      required:
+        - items
+    EventPage:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RunEvent'
+        next_offset:
+          type: integer
+          minimum: 0
+    RetentionItem:
+      type: object
+      required:
+        - run_id
+        - project_id
+        - created_at
+        - status
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        expired_at:
+          type: string
+          format: date-time
+        purged_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum:
+            - protected
+            - eligible
+            - purged
+            - leased
+            - failed
+        finished_at:
+          type: string
+          format: date-time
+          description: 经调度服务确认的终结时间，运行保留期从此起算。
+    RetentionPage:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RetentionItem'
+    RetentionRecord:
+      type: object
+      required:
+        - id
+        - project_id
+        - run_id
+        - worker_id
+        - status
+        - checked_at
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+          format: uuid
+        run_id:
+          type: string
+          format: uuid
+        worker_id:
+          type: string
+        status:
+          type: string
+          enum:
+            - protected
+            - purged
+            - leased
+            - failed
+        checked_at:
+          type: string
+          format: date-time
+    RetentionHistoryPage:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RetentionRecord'
+        next_offset:
+          type: integer
+  securitySchemes:
+    Session:
+      type: apiKey
+      in: cookie
+      name: pangu_session
+    BearerToken:
+      type: http
+      scheme: bearer
+      bearerFormat: Pangu API Token
+security:
+  - Session: []
+  - BearerToken: []

@@ -1,16 +1,77 @@
-name: Go 检查
+name: 工程检查
 on: [push, pull_request]
 permissions:
   contents: read
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
-      - run: go test -race ./...
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --prefix web
+      - run: npm run build --prefix web
+      - run: go test ./...
       - run: go vet ./...
-      - run: go build ./cmd/pangu
+      - run: go build ./cmd/...
+      - if: runner.os == 'Windows'
+        run: |
+          ./scripts/codex-source.test.ps1
+          ./scripts/recovery.test.ps1
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: pangu-ci-admin-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      PANGU_DATABASE_ADMIN_URL: postgresql://postgres:pangu-ci-admin-only@127.0.0.1:5432/postgres?sslmode=disable
+      PANGU_DATABASE_URL: postgresql://pangu_test_app:pangu-ci-test-only@127.0.0.1:5432/pangu_test?sslmode=disable
+      PANGU_TEST_DATABASE_URL: postgresql://pangu_test_app:pangu-ci-test-only@127.0.0.1:5432/pangu_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --prefix web
+      - run: npm run build --prefix web
+      - run: go run ./cmd/database
+      - run: go test -race -p 1 ./...
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build

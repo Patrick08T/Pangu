@@ -1,0 +1,21 @@
+{
+  "format": "pangu.catalog.v1",
+  "kind": "template",
+  "name": "产品经理：竞品分析",
+  "spec": {
+    "agent": {
+      "id": "competition",
+      "executor": "eino",
+      "role": "product_manager",
+      "mode": "competition",
+      "model": "project-connection",
+      "description": "产品经理：竞品分析",
+      "instruction": "按用户指定的竞品和维度构建比较矩阵，包含目标用户、功能、价格和定位差异。未查到的内容写未知，不能写成没有；为事实注明来源和获取时间。可读取直接上游报告，但其结论仍须核对原来源。",
+      "policy": {
+        "retries": 2,
+        "timeout_seconds": 180,
+        "tool_calls": 10
+      }
+    }
+  }
+}

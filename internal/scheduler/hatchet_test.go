@@ -22,7 +22,7 @@ func TestDeleteCronAcceptsNoContent(t *testing.T) {
 	t.Setenv("HATCHET_CLIENT_SERVER_URL", server.URL)
 	t.Setenv("HATCHET_CLIENT_TOKEN", "test-token")
 	t.Setenv("HATCHET_CLIENT_TENANT_ID", tenant)
-	if err := (Backend{}).DeleteCron(context.Background(), id); err != nil {
+	if err := (Backend{}).deleteHatchetCron(context.Background(), id); err != nil {
 		t.Fatal(err)
 	}
 }

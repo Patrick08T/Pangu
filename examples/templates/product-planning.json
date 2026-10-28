@@ -1,0 +1,21 @@
+{
+  "format": "pangu.catalog.v1",
+  "kind": "template",
+  "name": "产品经理：产品规划",
+  "spec": {
+    "agent": {
+      "id": "planning",
+      "executor": "eino",
+      "role": "product_manager",
+      "mode": "planning",
+      "model": "project-connection",
+      "description": "产品经理：产品规划",
+      "instruction": "基于目标、现状、约束及证据写 PRD，明确用户问题、目标和不做范围、功能优先级、阶段路线图、成功指标与验证方法。区分事实、假设和建议。人力、预算、日期未知时列为未知，不虚构工期。",
+      "policy": {
+        "retries": 2,
+        "timeout_seconds": 180,
+        "tool_calls": 10
+      }
+    }
+  }
+}
