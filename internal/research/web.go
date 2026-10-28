@@ -71,7 +71,7 @@ func dialPublic(ctx context.Context, network, address string) (net.Conn, error) 
 }
 
 func webClient() *http.Client {
-	return &http.Client{Timeout: 30 * time.Second, Transport: &http.Transport{DialContext: dialPublic, TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: 15 * time.Second, MaxResponseHeaderBytes: 64 * 1024, DisableKeepAlives: true},
+	return &http.Client{Transport: &http.Transport{DialContext: dialPublic, TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: 15 * time.Second, MaxResponseHeaderBytes: 64 * 1024, DisableKeepAlives: true},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) > 3 {
 				return errors.New("网页重定向超过 3 次")

@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"github.com/Patrick08T/Pangu/internal/catalog"
 	"github.com/Patrick08T/Pangu/internal/schedule"
 	"github.com/Patrick08T/Pangu/internal/scheduler"
 	"github.com/Patrick08T/Pangu/internal/workspace"
@@ -11,24 +10,6 @@ import (
 type page[T any] struct {
 	Items      []T    `json:"items"`
 	NextOffset *int64 `json:"next_offset,omitempty"`
-}
-
-func (h handler) catalogPage(ctx context.Context, items []catalog.Object, offset int) (page[catalog.Object], error) {
-	out := page[catalog.Object]{Items: []catalog.Object{}}
-	if len(items) == 100 {
-		next := int64(offset + 100)
-		out.NextOffset = &next
-	}
-	for _, item := range items {
-		ok, err := h.visible(ctx, item.ProjectID, catalogAction(item.Kind, "read"))
-		if err != nil {
-			return out, err
-		}
-		if ok {
-			out.Items = append(out.Items, item)
-		}
-	}
-	return out, nil
 }
 
 func (h handler) cronPage(ctx context.Context, items []schedule.Plan, offset int64, project string) (page[schedule.Plan], error) {

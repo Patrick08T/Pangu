@@ -82,7 +82,7 @@ func (h handler) resolveCron(ctx context.Context, id string, c workflow.Cron, pa
 			return c, nil
 		}
 	}
-	d, err := catalog.Compile(ctx, h.backend.Namespace(), c.Workflow.VersionID, c.Workflow.Input)
+	d, err := catalog.Compile(ctx, h.backend.Namespace(), c.Workflow.VersionID, c.Workflow.ProjectID, c.Workflow.Input)
 	if err != nil {
 		return c, err
 	}

@@ -1,0 +1,13 @@
+interface:
+  display_name: Workflow 构建与优化
+  short_description: 从最小基线到上下文交接、独立评估与受控迭代的 Agent 工作流工程
+  default_prompt: 使用 $build-optimize-workflow 分析并实现我的 Agent workflow，建立上下文契约、验收案例和可回滚的优化闭环。
+  icon_small: assets/icon.svg
+  icon_large: assets/icon.svg
+policy:
+  products:
+  - chatgpt
+  - codex
+  - api
+  - atlas
+  allow_implicit_invocation: true

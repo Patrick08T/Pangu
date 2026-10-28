@@ -55,7 +55,13 @@ func (b Backend) requestActive(ctx context.Context, id string) (bool, error) {
 func (b Backend) submitFire(ctx context.Context, fire *schedule.Fire) error {
 	namespace := b.client.NewWorkflow(WorkflowName).GetName()
 	key := fire.ScheduleID + ":" + fire.Slot.Format("20060102T1504Z")
-	item, err := submission.Prepare(ctx, namespace, "cron", key, fire.Snapshot)
+	item, err := submission.Find(ctx, namespace, "cron", key, fire.Snapshot)
+	if errors.Is(err, submission.ErrNotFound) {
+		if err := fire.Snapshot.Workflow.ValidateHandoffs(); err != nil {
+			return schedule.Skip(ctx, fire, err.Error())
+		}
+		item, err = submission.Prepare(ctx, namespace, "cron", key, fire.Snapshot)
+	}
 	if err != nil {
 		return err
 	}

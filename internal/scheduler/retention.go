@@ -3,6 +3,10 @@ package scheduler
 import (
 	"context"
 	"errors"
+	"github.com/Patrick08T/Pangu/internal/delivery"
+	"github.com/Patrick08T/Pangu/internal/evaluation"
+	"github.com/Patrick08T/Pangu/internal/factory"
+	"github.com/Patrick08T/Pangu/internal/usage"
 	"github.com/Patrick08T/Pangu/internal/workspace"
 	"log/slog"
 	"time"
@@ -49,7 +53,7 @@ func (b Backend) Retention(ctx context.Context, preview bool) ([]workspace.Reten
 		}
 	}
 	if !preview {
-		err = workspace.PruneHistory(ctx, b.Namespace())
+		err = errors.Join(factory.Maintain(ctx, b.Namespace()), workspace.PruneHistory(ctx, b.Namespace()), evaluation.Maintain(ctx, b.Namespace()), delivery.Maintain(ctx, b.Namespace()), usage.Maintain(ctx))
 	}
 	return items, err
 }

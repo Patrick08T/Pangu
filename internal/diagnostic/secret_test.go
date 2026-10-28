@@ -26,10 +26,26 @@ func TestRedactSecretsBeforeTruncation(t *testing.T) {
 
 func TestQuotedCredentialsAreRedactedWithoutEnvironment(t *testing.T) {
 	for _, value := range []string{`{"token":"json-secret-value"}`, `{"api_key":"json-secret-value"}`,
-		`password="two word secret"`, `secret='two word secret'`, `{"password":"escaped\\\"secret"}`} {
+		`password="two word secret"`, `secret='two word secret'`, `{"password":"escaped\\\"secret"}`,
+		`{"arguments":"{\"password\":\"two word secret\",\"api_key\":\"json-secret-value\"}"}`} {
 		got, _ := Text(value, 4096)
 		if strings.Contains(got, "json-secret-value") || strings.Contains(got, " word ") || strings.Contains(got, "escaped") {
 			t.Errorf("泄漏凭据 %s → %s", value, got)
+		}
+	}
+}
+
+func TestBareCredentialsAndPrivateKeysAreRedacted(t *testing.T) {
+	for _, value := range []string{
+		"sk-proj-abcdefghijklmnopqrstuvwxyz0123456789",
+		"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJwcml2YXRlIn0.c2lnbmF0dXJlX3ByaXZhdGU",
+		"-----BEGIN RSA PRIVATE KEY-----\nprivate-key-material\n-----END RSA PRIVATE KEY-----",
+		`-----BEGIN PRIVATE KEY-----\nprivate-key-material\n-----END PRIVATE KEY-----`,
+		"-----BEGIN OPENSSH PRIVATE KEY-----\npartial-private-key-material",
+	} {
+		got, _ := Text(value, 8192)
+		if got != "[已脱敏]" || !Sensitive([]byte(value)) {
+			t.Errorf("裸凭据未脱敏: %q", got)
 		}
 	}
 }

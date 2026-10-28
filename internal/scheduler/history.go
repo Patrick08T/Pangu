@@ -5,10 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"strings"
 	"time"
 
+	"github.com/Patrick08T/Pangu/internal/diagnostic"
 	"github.com/Patrick08T/Pangu/internal/execution"
 	"github.com/Patrick08T/Pangu/internal/submission"
+	"github.com/Patrick08T/Pangu/internal/workflow"
+	"github.com/Patrick08T/Pangu/internal/workspace"
 )
 
 func (b Backend) saveHistory(ctx context.Context, run *RunDetails) error {
@@ -18,6 +22,7 @@ func (b Backend) saveHistory(ctx context.Context, run *RunDetails) error {
 	summary := RunDetails{RunSummary: run.RunSummary, SourceRunID: run.SourceRunID, StopConfirmed: true,
 		CancelRequested: run.CancelRequested, LogsExpired: true, Nodes: []NodeRun{}, Events: []RunEvent{}, Attempts: []execution.Attempt{}}
 	summary.Error = historyError(run.Error)
+	summary.Title = ""
 	for _, node := range run.Nodes {
 		summary.Nodes = append(summary.Nodes, NodeRun{RunSummary: node.RunSummary, NodeID: node.NodeID, TaskID: node.TaskID,
 			Executor: node.Executor, Attempt: node.Attempt, Error: historyError(node.Error)})
@@ -78,12 +83,46 @@ func (b Backend) runSummary(ctx context.Context, id string) (*RunSummary, error)
 		if lookupErr != nil {
 			return nil, lookupErr
 		}
-		return &RunSummary{ID: record.RunID, ProjectID: record.ProjectID, CreatedBy: record.CreatedBy, CreatedAt: record.CreatedAt, Status: "unknown"}, nil
+		run = &RunDetails{RunSummary: RunSummary{ID: record.RunID, ProjectID: record.ProjectID, CreatedBy: record.CreatedBy, CreatedAt: record.CreatedAt, Status: "unknown"}}
+		err = nil
 	}
 	if err != nil {
 		return nil, err
 	}
+	expired, err := workspace.Expired(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if !expired {
+		record, err := submission.ForRun(ctx, b.Namespace(), id)
+		if err != nil {
+			return nil, err
+		}
+		run.Title = taskTitle(record.Snapshot.Workflow)
+	}
 	return &run.RunSummary, nil
+}
+
+func taskTitle(definition workflow.Definition) string {
+	text := definition.Input
+	var brief struct {
+		Question string `json:"question"`
+	}
+	if json.Unmarshal([]byte(text), &brief) == nil && brief.Question != "" {
+		text = brief.Question
+	}
+	if diagnostic.Sensitive([]byte(text)) {
+		return "含敏感信息的任务"
+	}
+	text = strings.Join(strings.Fields(text), " ")
+	if text == "" {
+		return "未命名任务"
+	}
+	text, truncated := diagnostic.Text(text, 240)
+	if truncated {
+		text += "…"
+	}
+	return text
 }
 
 func (b Backend) MaintainHistory(ctx context.Context) {

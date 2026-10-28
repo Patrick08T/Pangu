@@ -1,6 +1,6 @@
 {
   "format": "pangu.catalog.v1",
-  "kind": "template",
+  "kind": "agent",
   "name": "产品经理：产品规划",
   "spec": {
     "agent": {
@@ -10,12 +10,15 @@
       "mode": "planning",
       "model": "project-connection",
       "description": "产品经理：产品规划",
+      "handoff": {
+        "objective": "把已确认的问题和证据转为可决策的产品规划",
+        "inputs": "本次目标、用户问题、约束及上游调研和竞品结果",
+        "deliverables": "中文产品规划：目标、非目标、优先级、路线图、衡量指标",
+        "acceptance": "需求关联用户问题；优先级有依据；假设、风险与待确认项显式列出",
+        "failure_handling": "关键信息不足时给出有条件的建议与确认清单，不编造承诺或周期"
+      },
       "instruction": "基于目标、现状、约束及证据写 PRD，明确用户问题、目标和不做范围、功能优先级、阶段路线图、成功指标与验证方法。区分事实、假设和建议。人力、预算、日期未知时列为未知，不虚构工期。",
-      "policy": {
-        "retries": 2,
-        "timeout_seconds": 180,
-        "tool_calls": 10
-      }
+      "policy": {"retries":2}
     }
   }
 }

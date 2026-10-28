@@ -28,12 +28,17 @@ test.each(['{','{}'])('已接受但回执损坏仍冻结原输入：%s',async bo
   expect((screen.getByLabelText('编排 JSON') as HTMLTextAreaElement).disabled).toBe(true);
 });
 
-test('切换项目后禁止运行原项目版本',async()=>{
-  const fetcher=vi.fn(async()=>new Response(JSON.stringify({project_id:'project-a',kind:'agent'})));vi.stubGlobal('fetch',fetcher);
+test('共享版本使用当前所选项目执行',async()=>{
+  const bodies:unknown[]=[];
+  vi.stubGlobal('fetch',vi.fn(async(url:string,options:RequestInit)=>{
+    if(options.method==='GET'&&url.includes('/versions/'))return Response.json({kind:'agent',archived:false});
+    if(options.method==='POST')bodies.push(JSON.parse(String(options.body)));
+    return Response.json({request_id:'00000000-0000-0000-0000-000000000003',status:'pending'});
+  }));
   render(<Start access={{session:{id:'u',name:'成员',admin:false,csrf:'csrf'},project:'project-b',role:'operator'}} version="version-a"/>);
   fireEvent.click(screen.getByRole('button',{name:'提交运行'}));
-  await screen.findByText(/版本不属于当前项目/);
-  expect(fetcher).toHaveBeenCalledTimes(1);expect((fetcher.mock.calls[0] as unknown as [string,RequestInit])[1].method).toBe('GET');
+  await screen.findByText('已保存请求');
+  expect(bodies).toEqual([{project_id:'project-b',input:''}]);
 });
 
 test('执行前检查失败显示诊断但不冻结尚未提交的输入',async()=>{

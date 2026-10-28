@@ -25,13 +25,13 @@ export function Start({access,version=''}:{access:Access;version?:string}) {
   function rawDefinition(){const parsed=JSON.parse(definition) as Schema['Workflow'];if(parsed.project_id!==access.project)throw Error('定义中的 project_id 必须与当前项目一致。');return parsed;}
   async function submit(){
     const path=mode==='version'?`/versions/${encodeURIComponent(versionID)}/run`:'/runs';
-    if(mode==='version'&&!versionID.trim())throw Error('请选择已发布的项目 Agent 或工作流版本。');
+    if(mode==='version'&&!versionID.trim())throw Error('请选择已发布的 Agent 或工作流版本。');
     if(mode==='version'){
       const fixed=await apiRequest<Schema['CatalogVersion']>(`/versions/${encodeURIComponent(versionID)}`);
-      if(fixed.project_id!==access.project)throw Error('版本不属于当前项目，请切换项目或选择当前项目版本。');
+      if(fixed.archived||!['agent','workflow'].includes(fixed.kind))throw Error('请选择可运行的发布版本。');
       if(!action.active())return;
     }
-    const accepted=await apiRequest<Schema['Submission']>(path,{method:'POST',body:mode==='version'?{input}:rawDefinition(),csrf:access.session.csrf,key:key.current});
+    const accepted=await apiRequest<Schema['Submission']>(path,{method:'POST',body:mode==='version'?{project_id:access.project,input}:rawDefinition(),csrf:access.session.csrf,key:key.current});
     setRequest(receipt(accepted));
   }
   async function validate(){

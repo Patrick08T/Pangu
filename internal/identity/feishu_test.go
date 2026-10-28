@@ -13,6 +13,17 @@ type transportFunc func(*http.Request) (*http.Response, error)
 
 func (f transportFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
+func TestFeishuHTTPFailureReportsStatusWithoutResponseSecrets(t *testing.T) {
+	client := feishuClient()
+	client.Transport = transportFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 400, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"code":20049,"error_description":"private-secret"}`)), Request: r}, nil
+	})
+	_, err := exchange(context.Background(), client, Config{PublicURL: "https://pangu.example"}, "private-code")
+	if err == nil || !strings.Contains(err.Error(), "HTTP 400") || !strings.Contains(err.Error(), "code 20049") || strings.Contains(err.Error(), "private-") {
+		t.Fatalf("身份接口诊断应保留 HTTP 状态且不泄漏响应和凭据: %v", err)
+	}
+}
+
 func TestFeishuExchangeUsesV3AndDoesNotExposeTokens(t *testing.T) {
 	cfg := Config{AppID: "cli_test", AppSecret: "test-secret", PublicURL: "https://pangu.example", Tenant: "tenant-test"}
 	calls := 0
@@ -27,7 +38,7 @@ func TestFeishuExchangeUsesV3AndDoesNotExposeTokens(t *testing.T) {
 			if err := r.ParseForm(); err != nil {
 				t.Error(err)
 			}
-			if r.Form.Get("code_verifier") != "test-verifier" || r.Form.Get("client_secret") != "test-secret" || r.Form.Get("redirect_uri") != "https://pangu.example/api/auth/callback" {
+			if r.Form.Has("code_verifier") || r.Form.Get("client_secret") != "test-secret" || r.Form.Get("redirect_uri") != "https://pangu.example/api/auth/callback" {
 				t.Errorf("授权参数缺失")
 			}
 		} else {
@@ -38,7 +49,7 @@ func TestFeishuExchangeUsesV3AndDoesNotExposeTokens(t *testing.T) {
 		}
 		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body)), Request: r}, nil
 	})
-	user, err := exchange(context.Background(), client, cfg, "test-code", "test-verifier")
+	user, err := exchange(context.Background(), client, cfg, "test-code")
 	if err != nil || user.OpenID != "ou_test" || user.Name != "测试成员" || calls != 2 {
 		t.Fatalf("飞书授权失败: %+v %v", user, err)
 	}
@@ -50,7 +61,7 @@ func TestFeishuRejectsUntrustedTenantAndRedirect(t *testing.T) {
 	client.Transport = transportFunc(func(r *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: 302, Header: http.Header{"Location": []string{"https://evil.example/"}}, Body: io.NopCloser(strings.NewReader("")), Request: r}, nil
 	})
-	if _, err := exchange(context.Background(), client, cfg, "code", "verifier"); err == nil {
+	if _, err := exchange(context.Background(), client, cfg, "code"); err == nil {
 		t.Fatal("飞书请求跟随了不可信重定向")
 	}
 	cfg.PublicURL = "http://public.example"
@@ -72,7 +83,7 @@ func TestFeishuVerifiedIdentityMustBelongToAllowedTenant(t *testing.T) {
 		}
 		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body)), Request: r}, nil
 	})
-	_, err := exchange(context.Background(), client, Config{AppID: "app", AppSecret: "secret", PublicURL: "https://pangu.example", Tenant: "allowed"}, "code", "verifier")
+	_, err := exchange(context.Background(), client, Config{AppID: "app", AppSecret: "secret", PublicURL: "https://pangu.example", Tenant: "allowed"}, "code")
 	if !errors.Is(err, ErrForbidden) {
 		t.Fatal("真实用户信息响应的陌生租户被允许", err)
 	}

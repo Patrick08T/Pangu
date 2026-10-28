@@ -25,7 +25,7 @@ func IssueToken(ctx context.Context, actor Actor, project, name string, scopes [
 	if actor.TokenID != "" {
 		return Token{}, "", ErrForbidden
 	}
-	if strings.TrimSpace(name) == "" || len(name) > 128 || len(scopes) == 0 || len(scopes) > 7 || !expires.After(time.Now()) || expires.After(time.Now().Add(90*24*time.Hour)) {
+	if strings.TrimSpace(name) == "" || len(name) > 128 || len(scopes) == 0 || len(scopes) > 8 || !expires.After(time.Now()) || expires.After(time.Now().Add(90*24*time.Hour)) {
 		return Token{}, "", errors.Join(ErrInvalid, errors.New("Token 名称、权限或有效期无效；最长 90 天"))
 	}
 	if err := validateScopes(scopes); err != nil {
@@ -65,7 +65,7 @@ func IssueToken(ctx context.Context, actor Actor, project, name string, scopes [
 func validateScopes(scopes []string) error {
 	seen := map[string]bool{}
 	for _, scope := range scopes {
-		if seen[scope] || !slices.Contains([]string{"read", "run", "configure", "schedule", "manage_run", "manage_schedule", "manage_connections"}, scope) {
+		if seen[scope] || !slices.Contains([]string{"read", "run", "configure", "schedule", "manage_run", "manage_schedule", "manage_connections", "manage_factory"}, scope) {
 			return errors.Join(ErrInvalid, errors.New("Token 权限无效或重复"))
 		}
 		seen[scope] = true

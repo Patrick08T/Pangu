@@ -20,7 +20,7 @@ func (s Service) Handler(next http.Handler) http.Handler {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		if r.Method == "GET" && r.URL.Path == "/healthz" {
+		if r.Method == "GET" && r.URL.Path == "/healthz" || r.Pattern == "POST /hooks/github/{id}" {
 			next.ServeHTTP(w, r)
 			return
 		}

@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -49,7 +48,7 @@ func TestHatchetVerificationFailureCannotPublishOrRetry(t *testing.T) {
 		var accepted struct {
 			RunID string `json:"run_id"`
 		}
-		request(t, h, "POST", "/runs", workflow.Definition{ProjectID: p.ID, Nodes: []workflow.Node{{ID: "code", Executor: "codex", Instruction: instruction}}}, 202, &accepted)
+		request(t, h, "POST", "/runs", workflow.Definition{ProjectID: p.ID, Nodes: []workflow.Node{{ID: "code", Executor: "codex", Handoff: testHandoff(), Instruction: instruction}}}, 202, &accepted)
 		var run scheduler.RunDetails
 		if instruction == "change" {
 			run = *waitFailedRun(t, backend, accepted.RunID)
@@ -81,7 +80,7 @@ func assertVerificationResult(t *testing.T, run scheduler.RunDetails, instructio
 	}
 }
 
-func TestHatchetVerificationDeadlineCannotRetry(t *testing.T) {
+func TestHatchetVerificationHasNoNodeDeadline(t *testing.T) {
 	_, client := integrationClient(t)
 	backend := scheduler.NewBackend(client)
 	worker, err := scheduler.NewWorker(client, func(context.Context, workflow.NodeInput) (workflow.NodeOutput, error) {
@@ -101,7 +100,7 @@ func TestHatchetVerificationDeadlineCannotRetry(t *testing.T) {
 	if err != nil {
 		t.Skip("需要 Windows PowerShell 验证子进程")
 	}
-	p, err := backend.RegisterProject(context.Background(), workspace.Project{Name: "超时验证", Source: original.Source, Branch: "main", WorkerID: original.WorkerID, Verification: []string{program, "-NoProfile", "-NonInteractive", "-Command", "Start-Sleep -Seconds 10"}})
+	p, err := backend.RegisterProject(context.Background(), workspace.Project{Name: "无执行时限验证", Source: original.Source, Branch: "main", WorkerID: original.WorkerID, Verification: []string{program, "-NoProfile", "-NonInteractive", "-Command", "Start-Sleep -Seconds 10"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,10 +108,10 @@ func TestHatchetVerificationDeadlineCannotRetry(t *testing.T) {
 	var accepted struct {
 		RunID string `json:"run_id"`
 	}
-	definition := workflow.Definition{ProjectID: p.ID, Nodes: []workflow.Node{{ID: "code", Executor: "codex", Instruction: "inspect", Policy: &workflow.Policy{TimeoutSeconds: 3, Retries: 2}}}}
+	definition := workflow.Definition{ProjectID: p.ID, Nodes: []workflow.Node{{ID: "code", Executor: "codex", Handoff: testHandoff(), Instruction: "inspect", Policy: &workflow.Policy{Retries: 2}}}}
 	request(t, h, "POST", "/runs", definition, 202, &accepted)
-	run := waitFailedRun(t, backend, accepted.RunID)
-	if len(run.Attempts) != 1 || run.Attempts[0].Category != "timeout" || !strings.HasPrefix(run.Attempts[0].Message, "[verification]") {
-		t.Fatalf("验证总超时覆盖了不可重试属性: %+v", run.Attempts)
+	run := waitRun(t, h, accepted.RunID)
+	if len(run.Attempts) != 1 || run.Attempts[0].Status != "succeeded" {
+		t.Fatalf("验证仍受节点时限约束: %+v", run.Attempts)
 	}
 }

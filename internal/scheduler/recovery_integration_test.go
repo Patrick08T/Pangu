@@ -28,8 +28,8 @@ func TestHatchetCodexCrashPreservesCheckpointAndIsolatesPartialWrite(t *testing.
 	first := startProcess(t)
 	awaitWorker(t, backend)
 	d := workflow.Definition{ProjectID: project.ID, Input: control, Nodes: []workflow.Node{
-		{ID: "source", Executor: "codex", Model: "checkpoint-source", Instruction: "保留上游"},
-		{ID: "recover", Executor: "codex", Model: "checkpoint-recover", Instruction: "隔离失败写入", DependsOn: []string{"source"}},
+		{ID: "source", Executor: "codex", Model: "checkpoint-source", Handoff: testHandoff(), Instruction: "保留上游"},
+		{ID: "recover", Executor: "codex", Model: "checkpoint-recover", Handoff: testHandoff(), Instruction: "隔离失败写入", DependsOn: []string{"source"}},
 	}}
 	accepted, err := backend.Submit(context.Background(), d, "crash-checkpoint")
 	if err != nil || accepted.RunID == "" {

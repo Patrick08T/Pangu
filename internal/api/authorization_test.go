@@ -58,9 +58,9 @@ func authorizationAPI(t *testing.T) (http.Handler, string, string, string, strin
 	if err != nil {
 		t.Fatal(err)
 	}
-	token := strings.Repeat("x", 43)
+	token := uuid.NewString() + "session"
 	hash := sha256.Sum256([]byte(token))
-	_, err = conn.Exec(ctx, `INSERT INTO pangu.sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '1 hour') ON CONFLICT(token_hash) DO UPDATE SET user_id=$2`, hex.EncodeToString(hash[:]), user)
+	_, err = conn.Exec(ctx, `INSERT INTO pangu.sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '1 hour')`, hex.EncodeToString(hash[:]), user)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,6 +73,9 @@ func callAuthorized(h http.Handler, method, path, body, token string) *httptest.
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("Origin", "https://pangu.example")
 	r.Header.Set("Idempotency-Key", "authorization-test")
+	if strings.HasSuffix(path, "/trials") {
+		r.Header.Set("Idempotency-Key", trialKey())
+	}
 	hash := sha256.Sum256([]byte("pangu-csrf:" + token))
 	r.Header.Set("X-CSRF-Token", hex.EncodeToString(hash[:]))
 	w := httptest.NewRecorder()
@@ -80,11 +83,11 @@ func callAuthorized(h http.Handler, method, path, body, token string) *httptest.
 	return w
 }
 
-func TestAuthenticatedCatalogFiltersAndRejectsCrossProjectAndViewerWrites(t *testing.T) {
+func TestAuthenticatedSharedCatalogPreservesWorkspaceAndWriteBoundaries(t *testing.T) {
 	h, ns, project, other, token := authorizationAPI(t)
 	var owned, foreign *catalog.Object
 	for _, id := range []string{project, other} {
-		item, err := catalog.Create(context.Background(), ns, catalog.NewObject{Kind: "agent", ProjectID: id, Name: "私有 Agent", Spec: catalog.Spec{Agent: &workflow.Node{ID: "one", Executor: "codex", Instruction: "任务"}}})
+		item, err := catalog.Create(context.Background(), ns, catalog.NewObject{Kind: "agent", Name: "共享 Agent", Spec: catalog.Spec{Agent: &workflow.Node{ID: "one", Executor: "codex", Handoff: testHandoff(), Instruction: "任务"}}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -96,7 +99,7 @@ func TestAuthenticatedCatalogFiltersAndRejectsCrossProjectAndViewerWrites(t *tes
 	}
 	w := callAuthorized(h, "GET", "/catalog", "", token)
 	var result page[catalog.Object]
-	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil || w.Code != 200 || len(result.Items) != 1 || result.Items[0].ID != owned.ID {
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil || w.Code != 200 || len(result.Items) != 2 {
 		t.Fatalf("列表泄漏或缺失: %d %s", w.Code, w.Body.String())
 	}
 	for _, tc := range []struct{ method, path, body string }{
@@ -106,7 +109,11 @@ func TestAuthenticatedCatalogFiltersAndRejectsCrossProjectAndViewerWrites(t *tes
 		{"POST", "/runs", strings.ReplaceAll(validRun, testID, project)},
 	} {
 		w = callAuthorized(h, tc.method, tc.path, tc.body, token)
-		if w.Code != 403 {
+		expected := 403
+		if tc.method == "GET" {
+			expected = 200
+		}
+		if w.Code != expected {
 			t.Errorf("%s %s: %d %s", tc.method, tc.path, w.Code, w.Body.String())
 		}
 	}

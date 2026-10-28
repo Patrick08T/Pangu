@@ -14,7 +14,8 @@ type rowReader interface {
 	QueryRow(context.Context, string, ...any) pgx.Row
 }
 
-const versionColumns = `v.id::text,v.object_id::text,o.kind,coalesce(o.project_id::text,''),v.number,v.source_revision,v.spec,v.created_at,o.archived`
+const versionColumns = `v.id::text,v.object_id::text,o.kind,v.number,v.source_revision,v.spec,v.created_at,
+ CASE WHEN o.merged_into IS NULL THEN o.archived ELSE coalesce((SELECT canonical.archived FROM pangu.catalog_objects canonical WHERE canonical.id=o.merged_into),true) END`
 
 func Publish(ctx context.Context, namespace, id string, revision int) (*Version, error) {
 	conn, err := database.Open(ctx)
@@ -27,6 +28,14 @@ func Publish(ctx context.Context, namespace, id string, revision int) (*Version,
 		return nil, err
 	}
 	defer tx.Rollback(context.Background())
+	version, err := publishObject(ctx, tx, namespace, id, revision)
+	if err != nil {
+		return nil, err
+	}
+	return version, tx.Commit(ctx)
+}
+
+func publishObject(ctx context.Context, tx pgx.Tx, namespace, id string, revision int) (*Version, error) {
 	item, err := lockedObject(ctx, tx, namespace, id, revision)
 	if err != nil {
 		return nil, err
@@ -34,12 +43,7 @@ func Publish(ctx context.Context, namespace, id string, revision int) (*Version,
 	if err := item.NewObject.Validate(); err != nil {
 		return nil, invalid(err.Error())
 	}
-	if c := item.Spec.Connection; c != nil {
-		if err := c.Granted(item.ProjectID); err != nil {
-			return nil, err
-		}
-	}
-	if err := validateReferences(ctx, tx, namespace, item.NewObject, true, item.Spec.TemplateVersion); err != nil {
+	if err := validateReferences(ctx, tx, namespace, item.NewObject, true); err != nil {
 		return nil, err
 	}
 	data, err := json.Marshal(item.Spec)
@@ -54,7 +58,7 @@ func Publish(ctx context.Context, namespace, id string, revision int) (*Version,
 	if err != nil {
 		return nil, err
 	}
-	return version, tx.Commit(ctx)
+	return version, nil
 }
 
 func ReadVersion(ctx context.Context, namespace, id string) (*Version, error) {
@@ -98,7 +102,7 @@ func Versions(ctx context.Context, namespace, id string, offset int) ([]Version,
 func scanVersion(row pgx.Row) (*Version, error) {
 	item := &Version{}
 	var data []byte
-	err := row.Scan(&item.ID, &item.ObjectID, &item.Kind, &item.ProjectID, &item.Number, &item.SourceRevision, &data, &item.CreatedAt, &item.Archived)
+	err := row.Scan(&item.ID, &item.ObjectID, &item.Kind, &item.Number, &item.SourceRevision, &data, &item.CreatedAt, &item.Archived)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}

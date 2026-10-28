@@ -7,6 +7,7 @@ import (
 
 	"github.com/Patrick08T/Pangu/internal/workflow"
 	"github.com/cloudwego/eino/adk"
+	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
@@ -31,8 +32,48 @@ func (o operation) InvokableRun(ctx context.Context, args string, _ ...tool.Opti
 	if errors.As(err, &failure) || ctx.Err() != nil {
 		return "", err
 	}
-	data, _ := json.Marshal(map[string]string{"error": err.Error(), "notice": "工具未成功；不可虚构来源，可更换授权来源或在未知项说明。"})
+	data, _ := json.Marshal(map[string]string{"error": err.Error(), "notice": "工具未成功；修正参数或更换授权来源。不能把资料读取失败当成调研完成，不得虚构来源。"})
 	return string(data), nil
+}
+
+type reportModel struct {
+	model.BaseChatModel
+	s *Session
+}
+
+func (s *Session) Model(chat model.BaseChatModel) model.BaseChatModel {
+	return &reportModel{BaseChatModel: chat, s: s}
+}
+
+func (s *Session) modelResult() (*schema.Message, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.report != nil {
+		return schema.AssistantMessage(s.report.Title, nil), nil
+	}
+	return nil, nil
+}
+
+func (m *reportModel) Generate(ctx context.Context, messages []*schema.Message, opts ...model.Option) (*schema.Message, error) {
+	if result, err := m.s.modelResult(); result != nil || err != nil {
+		return result, err
+	}
+	result, err := m.BaseChatModel.Generate(ctx, messages, opts...)
+	if result != nil {
+		m.s.mu.Lock()
+		m.s.modelSpan, _ = result.Extra["pangu_trace_span"].(string)
+		m.s.mu.Unlock()
+	}
+	return result, err
+}
+
+func (m *reportModel) Stream(ctx context.Context, messages []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+	if result, err := m.s.modelResult(); err != nil {
+		return nil, err
+	} else if result != nil {
+		return schema.StreamReaderFromArray([]*schema.Message{result}), nil
+	}
+	return m.BaseChatModel.Stream(ctx, messages, opts...)
 }
 
 func (s *Session) Tools() adk.ToolsConfig {
@@ -53,5 +94,15 @@ func (s *Session) Tools() adk.ToolsConfig {
 		op := tools[len(tools)-1].(operation)
 		op.params["tasks"] = &schema.ParameterInfo{Type: schema.Array, Required: true, ElemInfo: &schema.ParameterInfo{Type: schema.Object, SubParams: map[string]*schema.ParameterInfo{"id": text("唯一任务 ID"), "title": text("标题"), "scope": text("范围与边界"), "depends_on": {Type: schema.Array, Required: true, ElemInfo: &schema.ParameterInfo{Type: schema.String}}, "deliverable": text("交付物"), "acceptance": text("可判断的验收条件")}}}
 	}
-	return adk.ToolsConfig{ToolsNodeConfig: compose.ToolsNodeConfig{Tools: tools, ExecuteSequentially: true}, ReturnDirectly: map[string]bool{"register_report": true}}
+	tools[len(tools)-1].(operation).params["claims"] = claimParameters()
+	available := map[string]bool{"register_report": true, "search_public": len(s.brief.PublicQueries) > 0,
+		"read_web": len(s.brief.PublicQueries)+len(s.brief.URLs) > 0, "read_project": len(s.brief.Documents) > 0,
+		"read_parent_report": len(s.input.Parents) > 0}
+	selected := []tool.BaseTool{}
+	for _, t := range tools {
+		if available[t.(operation).name] {
+			selected = append(selected, t)
+		}
+	}
+	return adk.ToolsConfig{ToolsNodeConfig: compose.ToolsNodeConfig{Tools: selected, ExecuteSequentially: true}}
 }

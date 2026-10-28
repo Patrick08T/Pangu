@@ -23,7 +23,7 @@ func TestShippedFactoryTemplatesAreValidAndProjectFree(t *testing.T) {
 		if err := decoder.Decode(&item); err != nil {
 			t.Fatal(err)
 		}
-		if item.Format != "pangu.catalog.v1" || item.Kind != "template" || item.ProjectID != "" || item.Spec.TemplateVersion != "" {
+		if item.Format != "pangu.catalog.v1" || item.Kind != "agent" {
 			t.Fatalf("模板包含项目绑定: %+v", item)
 		}
 		if err := item.Validate(); err != nil {

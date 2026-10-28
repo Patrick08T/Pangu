@@ -19,10 +19,10 @@ func TestHatchetNativeCodex(t *testing.T) {
 	_, backend, h := integrationSetup(t)
 	project := registerTestProject(t, backend)
 	d := workflow.Definition{ProjectID: project.ID, Input: "原生 Codex 集成验证", Nodes: []workflow.Node{
-		{ID: "source", Executor: "eino", Model: "source", Instruction: "生成计划"},
+		{ID: "source", Executor: "eino", Model: "source", Handoff: testHandoff(), Instruction: "生成计划"},
 		{ID: "code", Executor: "codex", DependsOn: []string{"source"},
-			Instruction: "这是临时测试 Git 项目，不使用 P4。请用工具创建 proof.txt，内容精确等于 parents.source.text。只完成此项，不提交 Git，最终用中文简短报告。"},
-		{ID: "summary", Executor: "eino", Model: "summary", Instruction: "汇总结果", DependsOn: []string{"code"}},
+			Handoff: testHandoff(), Instruction: "这是临时测试 Git 项目，不使用 P4。请用工具创建 proof.txt，内容精确等于 parents.source.text。只完成此项，不提交 Git，最终用中文简短报告。"},
+		{ID: "summary", Executor: "eino", Model: "summary", Handoff: testHandoff(), Instruction: "汇总结果", DependsOn: []string{"code"}},
 	}}
 	var accepted struct {
 		RunID string `json:"run_id"`

@@ -8,13 +8,17 @@ import (
 )
 
 func (h handler) versionPreflight(w http.ResponseWriter, r *http.Request) {
-	if !validID(w, r) || !h.catalogAllowed(w, r, true, "run") {
+	if !validID(w, r) || !h.catalogAllowed(w, r, true, "read") {
 		return
 	}
 	var input struct {
-		Input string `json:"input"`
+		Input     string `json:"input"`
+		ProjectID string `json:"project_id"`
 	}
 	if !decode(w, r, &input) {
+		return
+	}
+	if !h.allowed(w, r, input.ProjectID, "run", "") {
 		return
 	}
 	version, err := catalog.ReadVersion(r.Context(), h.backend.Namespace(), r.PathValue("id"))
@@ -27,9 +31,9 @@ func (h handler) versionPreflight(w http.ResponseWriter, r *http.Request) {
 	}
 	var definition *workflow.Definition
 	if version.Kind == "connection" {
-		definition = &workflow.Definition{ProjectID: version.ProjectID, Nodes: []workflow.Node{{ID: "connection-check", Executor: "eino", Instruction: "检查配置", ConnectionVersion: version.ID, Model: version.Spec.Connection.Model}}}
+		definition = &workflow.Definition{ProjectID: input.ProjectID, Nodes: []workflow.Node{{ID: "connection-check", Executor: "eino", Instruction: "检查配置", ConnectionVersion: version.ID, Model: version.Spec.Connection.Model}}}
 	} else {
-		definition, err = catalog.Compile(r.Context(), h.backend.Namespace(), version.ID, input.Input)
+		definition, err = catalog.Compile(r.Context(), h.backend.Namespace(), version.ID, input.ProjectID, input.Input)
 		if backendError(w, err) {
 			return
 		}

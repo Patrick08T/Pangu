@@ -83,23 +83,15 @@ func boundTemplate(t *testing.T, b scheduler.Backend, project, name string) *wor
 		t.Fatal(err)
 	}
 	ctx, ns := context.Background(), b.Namespace()
+	if input.Spec.Agent.Executor == "eino" {
+		input.Spec.Agent.ConnectionVersion = templateConnection(t, ns, project)
+		input.Spec.Agent.Model = "research"
+	}
 	template, err := catalog.Create(ctx, ns, input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	v1, err := catalog.Publish(ctx, ns, template.ID, template.Revision)
-	if err != nil {
-		t.Fatal(err)
-	}
-	connection := ""
-	if input.Spec.Agent.Executor == "eino" {
-		connection = templateConnection(t, ns, project)
-	}
-	bound, err := catalog.Bind(ctx, ns, v1.ID, project, name, connection)
-	if err != nil {
-		t.Fatal(err)
-	}
-	v, err := catalog.Publish(ctx, ns, bound.ID, bound.Revision)
+	v, err := catalog.Publish(ctx, ns, template.ID, template.Revision)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +105,7 @@ func boundTemplate(t *testing.T, b scheduler.Backend, project, name string) *wor
 		t.Fatal(err)
 	}
 	brief, _ := json.Marshal(workflow.ResearchBrief{Question: "规划任务台", Audience: "小型团队", Market: "中国", TimeScope: "2026", Context: "人工登记", Constraints: "工期未知", Documents: []string{"README.md"}})
-	d, err := catalog.Compile(ctx, ns, v.ID, string(brief))
+	d, err := catalog.Compile(ctx, ns, v.ID, project, string(brief))
 	if err != nil || d.Nodes[0].Instruction != original {
 		t.Fatalf("模板升级污染了已绑定版本: %+v %v", d, err)
 	}
@@ -127,7 +119,7 @@ func templateConnection(t *testing.T, namespace, project string) string {
 	grants, _ := json.Marshal([]map[string]any{{"project_id": project, "base_url": endpoint, "secret_ref": "PANGU_SECRET_TEMPLATE_TEST", "models": []string{"research"}}})
 	t.Setenv("PANGU_CONNECTION_GRANTS", string(grants))
 	t.Setenv("PANGU_SECRET_TEMPLATE_TEST", "local-template-fixture")
-	object, err := catalog.Create(ctx, namespace, catalog.NewObject{Kind: "connection", ProjectID: project, Name: "模板本地模型", Spec: catalog.Spec{Connection: &catalog.Connection{BaseURL: endpoint, Model: "research", SecretRef: "PANGU_SECRET_TEMPLATE_TEST"}}})
+	object, err := catalog.Create(ctx, namespace, catalog.NewObject{Kind: "connection", Name: "模板本地模型", Spec: catalog.Spec{Connection: &catalog.Connection{BaseURL: endpoint, Model: "research", SecretRef: "PANGU_SECRET_TEMPLATE_TEST"}}})
 	if err != nil {
 		t.Fatal(err)
 	}

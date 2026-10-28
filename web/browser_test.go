@@ -154,7 +154,7 @@ func browserGit(t *testing.T) string {
 func browserCatalog(t *testing.T, actor identity.Actor, project string) {
 	t.Helper()
 	ctx := identity.WithActor(context.Background(), actor)
-	object, err := catalog.Create(ctx, actor.Namespace, catalog.NewObject{Kind: "agent", ProjectID: project, Name: "浏览器文本安全验收", Spec: catalog.Spec{Agent: &workflow.Node{ID: "review", Executor: "codex", Instruction: "测试执行器，不调用真实模型"}}})
+	object, err := catalog.Create(ctx, actor.Namespace, catalog.NewObject{Kind: "agent", Name: "浏览器文本安全验收", Spec: catalog.Spec{Agent: &workflow.Node{ID: "review", Executor: "codex", Instruction: "测试执行器，不调用真实模型"}}})
 	if err != nil {
 		t.Fatal(err)
 	}

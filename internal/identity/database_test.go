@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/Patrick08T/Pangu/internal/database"
@@ -33,14 +34,17 @@ func TestLoginStateIsBrowserBoundSingleUseAndExpires(t *testing.T) {
 	}
 	parsed, _ := url.Parse(location)
 	state := parsed.Query().Get("state")
-	if _, err = consumeLogin(ctx, ns, cfg, state, "other-browser"); !errors.Is(err, ErrUnauthenticated) {
+	if len(state) != 43 || parsed.Query().Has("code_challenge") || parsed.Query().Has("code_challenge_method") {
+		t.Fatal("服务端 OAuth 授权参数无效")
+	}
+	if err = consumeLogin(ctx, ns, cfg, state, strings.Repeat("x", 43)); !errors.Is(err, ErrUnauthenticated) {
 		t.Fatalf("未绑定浏览器: %v", err)
 	}
-	verifier, err := consumeLogin(ctx, ns, cfg, state, browser)
-	if err != nil || len(verifier) < 43 {
+	err = consumeLogin(ctx, ns, cfg, state, browser)
+	if err != nil {
 		t.Fatalf("状态不可用: %v", err)
 	}
-	if _, err = consumeLogin(ctx, ns, cfg, state, browser); !errors.Is(err, ErrUnauthenticated) {
+	if err = consumeLogin(ctx, ns, cfg, state, browser); !errors.Is(err, ErrUnauthenticated) {
 		t.Fatal("状态可重放")
 	}
 	location, browser, err = beginLogin(ctx, ns, cfg)
@@ -58,7 +62,7 @@ func TestLoginStateIsBrowserBoundSingleUseAndExpires(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = consumeLogin(ctx, ns, cfg, state, browser); !errors.Is(err, ErrUnauthenticated) {
+	if err = consumeLogin(ctx, ns, cfg, state, browser); !errors.Is(err, ErrUnauthenticated) {
 		t.Fatal("过期状态仍有效")
 	}
 }

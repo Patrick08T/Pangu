@@ -7,7 +7,7 @@ export function VersionPreflight({version,access}:{version:Schema['CatalogVersio
   const action=useAction(),[input,setInput]=useState(''),[result,setResult]=useState<unknown>();
   async function check(){
     setResult(undefined);
-    try{setResult(await apiRequest(`/versions/${version.id}/preflight`,{method:'POST',csrf:access.session.csrf,body:{input}}));}
+    try{setResult(await apiRequest(`/versions/${version.id}/preflight`,{method:'POST',csrf:access.session.csrf,body:{project_id:access.project,input}}));}
     catch(error){if(error instanceof APIError&&error.response&&typeof error.response==='object'&&'checks' in error.response)setResult(error.response);throw error;}
   }
   return <section><h3>执行前诊断</h3><p className="muted">在指定 Worker 检查配置与环境，不发起收费模型请求。配置就绪不能证明凭据有效或模型服务可用。</p>

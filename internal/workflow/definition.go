@@ -8,14 +8,18 @@ import (
 )
 
 type Definition struct {
-	InputSchema *Shape `json:"input_schema,omitempty"`
-	VersionID   string `json:"version_id,omitempty"`
-	ProjectID   string `json:"project_id,omitempty"`
-	Input       string `json:"input"`
-	Nodes       []Node `json:"nodes"`
+	Budget      *Budget `json:"budget,omitempty"`
+	InputSchema *Shape  `json:"input_schema,omitempty"`
+	VersionID   string  `json:"version_id,omitempty"`
+	ProjectID   string  `json:"project_id,omitempty"`
+	Input       string  `json:"input"`
+	Nodes       []Node  `json:"nodes"`
 }
 
 type Node struct {
+	Handoff           *HandoffContract        `json:"handoff,omitempty"`
+	When              *Condition              `json:"when,omitempty"`
+	Approval          *Approval               `json:"approval,omitempty"`
 	ReadOnly          bool                    `json:"read_only,omitempty"`
 	Role              string                  `json:"role,omitempty"`
 	Mode              string                  `json:"mode,omitempty"`
@@ -33,6 +37,7 @@ type Node struct {
 }
 
 type NodeInput struct {
+	ApprovalID   string                `json:"approval_id,omitempty"`
 	RunID        string                `json:"-"`
 	NodeRunID    string                `json:"-"`
 	Parameters   map[string]any        `json:"parameters,omitempty"`
@@ -45,6 +50,7 @@ type NodeInput struct {
 }
 
 type NodeOutput struct {
+	Skipped           bool              `json:"skipped,omitempty"`
 	ReportIDs         []string          `json:"report_ids,omitempty"`
 	Reports           []Report          `json:"-"`
 	Data              map[string]any    `json:"data,omitempty"`
@@ -64,7 +70,23 @@ type CommandEvidence struct {
 
 var identifier = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_-]{0,63}$`)
 
-func (d Definition) Layers() ([][]Node, error) {
+func (d Definition) Layers() ([][]Node, error) { return d.validateLayers(true) }
+
+// TemplateLayers 仅校验无项目蓝本；执行入口仍必须使用 Layers。
+func (d Definition) TemplateLayers() ([][]Node, error) {
+	if d.ProjectID != "" || d.VersionID != "" {
+		return nil, fmt.Errorf("蓝本不能含项目或运行版本")
+	}
+	return d.validateLayers(false)
+}
+
+func (d Definition) validateLayers(requireProject bool) ([][]Node, error) {
+	if err := d.validateConditions(); err != nil {
+		return nil, err
+	}
+	if err := d.Budget.Validate(); err != nil {
+		return nil, err
+	}
 	if d.VersionID != "" {
 		if _, err := uuid.Parse(d.VersionID); err != nil {
 			return nil, fmt.Errorf("version_id 必须为 UUID")
@@ -83,7 +105,7 @@ func (d Definition) Layers() ([][]Node, error) {
 	}
 	nodes := make(map[string]Node, len(d.Nodes))
 	for _, n := range d.Nodes {
-		if (n.Executor == "codex" || n.Role != "") && d.ProjectID == "" {
+		if requireProject && (n.Executor == "codex" || n.Role != "") && d.ProjectID == "" {
 			return nil, fmt.Errorf("Codex 或专业角色编排必须指定已登记的 project_id")
 		}
 		if err := n.Validate(); err != nil {
@@ -106,10 +128,20 @@ func (d Definition) Layers() ([][]Node, error) {
 			seen[id] = true
 		}
 	}
-	return d.layers()
+	layers, err := d.layers()
+	if err != nil {
+		return nil, err
+	}
+	return layers, approvalLayers(layers)
 }
 
 func (n Node) Validate() error {
+	if err := n.Handoff.Validate(false); err != nil {
+		return err
+	}
+	if n.Approval != nil && (n.Approval.TimeoutSeconds < 1 || n.Approval.TimeoutSeconds > 3600) {
+		return fmt.Errorf("节点 %s 的人工等待期限必须为 1–3600 秒，且仍受整次运行 6 小时上限约束", n.ID)
+	}
 	if err := n.validateRole(); err != nil {
 		return err
 	}
@@ -140,7 +172,7 @@ func (n Node) Validate() error {
 	if n.Executor != "eino" && n.Executor != "codex" {
 		return fmt.Errorf("节点 %q 的 executor 必须为 eino 或 codex", n.ID)
 	}
-	if (n.Executor == "eino" || n.Model != "") && (strings.TrimSpace(n.Model) == "" || len(n.Model) > 128) {
+	if (n.Executor == "eino" && n.ConnectionVersion == "" || n.Model != "") && (strings.TrimSpace(n.Model) == "" || len(n.Model) > 128) {
 		return fmt.Errorf("节点 %q 的模型名长度必须在 1 至 128 字节之间", n.ID)
 	}
 	if strings.TrimSpace(n.Instruction) == "" || len(n.Instruction) > 16384 {

@@ -1,18 +1,21 @@
 {
   "format": "pangu.catalog.v1",
-  "kind": "template",
+  "kind": "agent",
   "name": "小范围代码修改与验证",
   "spec": {
     "agent": {
       "id": "change",
       "executor": "codex",
+      "handoff": {
+        "objective": "完成本次授权范围内的最小代码修改",
+        "inputs": "本次任务、上游方案、项目文件和项目约束",
+        "deliverables": "项目变更、修改说明、验证结果及未完成项",
+        "acceptance": "变更符合授权范围；报告实际执行的检查与退出结果，不把未执行检查写为通过",
+        "failure_handling": "出现阻塞或验证失败时保留诊断信息并说明缺口，不扩大修改范围或提交推送"
+      },
       "instruction": "先阅读项目约束，确认用户指定问题及允许修改范围。按测试先行方式完成最小修改，运行项目明确的验证命令并报告真实退出结果。只在本次工作区修改文件；不提交、不推送、不安装未知程序、不访问凭据。输出改动摘要、验证结果与剩余问题。",
       "read_only": false,
-      "policy": {
-        "retries": 0,
-        "timeout_seconds": 1800,
-        "tool_calls": 10
-      }
+      "policy": {"retries":0}
     }
   }
 }

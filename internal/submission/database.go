@@ -8,12 +8,14 @@ import (
 	"errors"
 	"github.com/Patrick08T/Pangu/internal/identity"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/Patrick08T/Pangu/internal/database"
 	"github.com/Patrick08T/Pangu/internal/workflow"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var ErrConflict = errors.New("同一幂等键已用于不同请求内容")
@@ -22,12 +24,14 @@ var ErrExpired = errors.New("提交记录已超出安全重试窗口，禁止重
 var keyPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,128}$`)
 
 type Snapshot struct {
+	Fork        *workflow.Fork      `json:"fork,omitempty"`
 	Workflow    workflow.Definition `json:"workflow"`
 	CreatedBy   string              `json:"created_by,omitempty"`
 	SourceRunID string              `json:"source_run_id,omitempty"`
 }
 
 type Record struct {
+	TaskID    string    `json:"task_id"`
 	CreatedBy string    `json:"created_by,omitempty"`
 	ID        string    `json:"request_id"`
 	ProjectID string    `json:"project_id"`
@@ -38,9 +42,13 @@ type Record struct {
 	Snapshot  Snapshot  `json:"-"`
 }
 
-const columns = `id::text,project_id::text,operation,coalesce(run_id::text,''),created_at,snapshot,payload_hash,coalesce(created_by::text,'')`
+const columns = `id::text,project_id::text,operation,coalesce(run_id::text,''),created_at,snapshot,payload_hash,coalesce(created_by::text,''),task_id::text`
 
 func ValidKey(key string) bool { return keyPattern.MatchString(key) }
+
+func PublicKey(key string) bool {
+	return ValidKey(key) && !strings.HasPrefix(key, "delivery:") && !strings.HasPrefix(key, "eval:") && !strings.HasPrefix(key, "trial:") && !strings.HasPrefix(key, "factory:")
+}
 
 func digest(value []byte) string {
 	hash := sha256.Sum256(value)
@@ -48,6 +56,24 @@ func digest(value []byte) string {
 }
 
 func Prepare(ctx context.Context, namespace, operation, key string, snapshot Snapshot) (*Record, error) {
+	conn, err := database.Open(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close(context.Background())
+	return prepare(ctx, conn, namespace, operation, key, snapshot)
+}
+
+type writer interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+}
+
+func PrepareTx(ctx context.Context, tx pgx.Tx, namespace, operation, key string, snapshot Snapshot) (*Record, error) {
+	return prepare(ctx, tx, namespace, operation, key, snapshot)
+}
+
+func prepare(ctx context.Context, conn writer, namespace, operation, key string, snapshot Snapshot) (*Record, error) {
 	if !ValidKey(key) || namespace == "" || operation == "" {
 		return nil, errors.New("提交作用域或幂等键无效")
 	}
@@ -61,11 +87,6 @@ func Prepare(ctx context.Context, namespace, operation, key string, snapshot Sna
 	if err != nil {
 		return nil, err
 	}
-	conn, err := database.Open(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer conn.Close(context.Background())
 	_, err = conn.Exec(ctx, `INSERT INTO pangu.submissions(id,namespace,project_id,operation,key_hash,payload_hash,snapshot,created_by,input_hash)
 		VALUES($1,$2,$3,$4,$5,$6,$7,nullif($8,'')::uuid,$9) ON CONFLICT(namespace,project_id,operation,key_hash) DO NOTHING`,
 		uuid.NewString(), namespace, snapshot.Workflow.ProjectID, operation, digest([]byte(key)), digest(data), data, snapshot.CreatedBy, digest([]byte(snapshot.Workflow.Input)))
@@ -91,7 +112,7 @@ func Find(ctx context.Context, namespace, operation, key string, snapshot Snapsh
 	return find(ctx, conn, namespace, operation, key, snapshot.Workflow.ProjectID, digest(data))
 }
 
-func find(ctx context.Context, conn *pgx.Conn, namespace, operation, key, project, hash string) (*Record, error) {
+func find(ctx context.Context, conn writer, namespace, operation, key, project, hash string) (*Record, error) {
 	item, storedHash, err := scan(conn.QueryRow(ctx, "SELECT "+columns+" FROM pangu.submissions WHERE namespace=$1 AND project_id=$2 AND operation=$3 AND key_hash=$4", namespace, project, operation, digest([]byte(key))))
 	if err == nil && storedHash != hash {
 		return nil, ErrConflict
@@ -123,7 +144,7 @@ func scan(row pgx.Row) (*Record, string, error) {
 	item := &Record{Status: "pending"}
 	var data []byte
 	var hash string
-	err := row.Scan(&item.ID, &item.ProjectID, &item.Operation, &item.RunID, &item.CreatedAt, &data, &hash, &item.CreatedBy)
+	err := row.Scan(&item.ID, &item.ProjectID, &item.Operation, &item.RunID, &item.CreatedAt, &data, &hash, &item.CreatedBy, &item.TaskID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, "", ErrNotFound
 	}

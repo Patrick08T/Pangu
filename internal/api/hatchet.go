@@ -30,11 +30,13 @@ type Backend interface {
 	Submit(context.Context, workflow.Definition, string) (*submission.Record, error)
 	GetRequest(context.Context, string) (*submission.Record, error)
 	Rerun(context.Context, string, string) (*submission.Record, error)
+	Fork(context.Context, string, string, workflow.ForkInput) (*submission.Record, error)
 	GetRun(context.Context, string) (*scheduler.RunDetails, error)
 	Events(context.Context, string, string, int, int) (*scheduler.EventPage, error)
 	ListRuns(context.Context, scheduler.RunQuery) (*scheduler.RunList, error)
 	CancelRun(context.Context, string) (*scheduler.Cancellation, error)
 	Preflight(context.Context, workflow.Definition) (*workflow.Preflight, error)
+	CodexModels(context.Context) ([]workflow.ModelChoice, error)
 	CreateCron(context.Context, workflow.Cron) (*schedule.Plan, error)
 	UpdateCron(context.Context, string, int, workflow.Cron, bool) (*schedule.Plan, error)
 	ListCrons(context.Context, int64) ([]schedule.Plan, error)
@@ -56,7 +58,17 @@ func New(backend Backend, access Access) http.Handler {
 	h := handler{backend: backend, access: access, checkDatabase: database.Check}
 	mux := http.NewServeMux()
 	h.catalogRoutes(mux)
+	h.factoryRoutes(mux)
 	h.identityRoutes(mux)
+	h.evaluationRoutes(mux)
+	h.deliveryRoutes(mux)
+	h.webhookRoutes(mux)
+	h.traceRoutes(mux)
+	mux.HandleFunc("GET /runs/{id}/usage", h.usage)
+	mux.HandleFunc("GET /runs/{id}/approvals", h.approvals)
+	mux.HandleFunc("GET /runs/{id}/reports", h.reports)
+	mux.HandleFunc("PUT /runs/{id}/reports/{report}/claims/{claim}", h.claimReview)
+	mux.HandleFunc("PUT /approvals/{id}", h.decideApproval)
 	mux.HandleFunc("GET /audit", h.auditList)
 	mux.HandleFunc("GET /retention", h.retention)
 	mux.HandleFunc("POST /retention", h.retention)
@@ -84,6 +96,10 @@ func New(backend Backend, access Access) http.Handler {
 	mux.HandleFunc("GET /runs/{id}/artifacts/{artifact}/diff", h.artifact)
 	mux.HandleFunc("POST /runs/{id}/cancel", h.cancelRun)
 	mux.HandleFunc("POST /runs/{id}/rerun", h.rerun)
+	mux.HandleFunc("POST /runs/{id}/fork", h.fork)
+	mux.HandleFunc("POST /runs/{id}/fork/preview", h.forkPreview)
+	mux.HandleFunc("GET /runs/{id}/inputs", h.runInputs)
+	mux.HandleFunc("POST /workflows/preview", h.inputPreview)
 	mux.HandleFunc("POST /crons", h.createCron)
 	mux.HandleFunc("GET /crons", h.listCrons)
 	mux.HandleFunc("GET /crons/preview", h.cronPreview)
@@ -108,7 +124,7 @@ func (h handler) submit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	key := r.Header.Get("Idempotency-Key")
-	if len(r.Header.Values("Idempotency-Key")) != 1 || !submission.ValidKey(key) || d.ProjectID == "" {
+	if len(r.Header.Values("Idempotency-Key")) != 1 || !submission.PublicKey(key) || d.ProjectID == "" {
 		problem(w, 400, "提交需要已登记的 project_id 和唯一的 Idempotency-Key 请求头")
 		return
 	}

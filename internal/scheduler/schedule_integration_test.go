@@ -13,7 +13,7 @@ func TestHatchetCronLostReceiptIsReconciledAndDeleted(t *testing.T) {
 	_, backend, _ := integrationSetup(t)
 	project := registerTestProject(t, backend)
 	ctx := context.Background()
-	c := workflow.Cron{Name: "receipt-test", Expression: "0 0 1 1 *", Workflow: workflow.Definition{ProjectID: project.ID, Nodes: []workflow.Node{{ID: "one", Executor: "eino", Model: "cron", Instruction: "测试"}}}}
+	c := workflow.Cron{Name: "receipt-test", Expression: "0 0 1 1 *", Workflow: workflow.Definition{ProjectID: project.ID, Nodes: []workflow.Node{{ID: "one", Executor: "eino", Model: "cron", Handoff: testHandoff(), Instruction: "测试"}}}}
 	plan, err := backend.CreateCron(ctx, c)
 	if err != nil || !plan.Ready {
 		t.Fatalf("创建: %+v %v", plan, err)
@@ -51,7 +51,7 @@ func TestHatchetCronPauseEditResumeUsesPersistedRevision(t *testing.T) {
 	_, backend, _ := integrationSetup(t)
 	project := registerTestProject(t, backend)
 	ctx := context.Background()
-	c := workflow.Cron{Name: "edit-test", Expression: "0 0 1 1 *", Workflow: workflow.Definition{ProjectID: project.ID, Nodes: []workflow.Node{{ID: "one", Executor: "eino", Model: "cron", Instruction: "测试"}}}}
+	c := workflow.Cron{Name: "edit-test", Expression: "0 0 1 1 *", Workflow: workflow.Definition{ProjectID: project.ID, Nodes: []workflow.Node{{ID: "one", Executor: "eino", Model: "cron", Handoff: testHandoff(), Instruction: "测试"}}}}
 	plan, err := backend.CreateCron(ctx, c)
 	if err != nil {
 		t.Fatal(err)

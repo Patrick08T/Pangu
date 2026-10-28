@@ -15,7 +15,7 @@ func TestHatchetNodeEventsArePagedAndOwnedByRoot(t *testing.T) {
 	var accepted struct {
 		RunID string `json:"run_id"`
 	}
-	request(t, h, "POST", "/runs", workflow.Definition{ProjectID: project.ID, Nodes: []workflow.Node{{ID: "one", Executor: "eino", Model: "one", Instruction: "输出"}}}, 202, &accepted)
+	request(t, h, "POST", "/runs", workflow.Definition{ProjectID: project.ID, Nodes: []workflow.Node{{ID: "one", Executor: "eino", Model: "one", Handoff: testHandoff(), Instruction: "输出"}}}, 202, &accepted)
 	run := waitRun(t, h, accepted.RunID)
 	var page scheduler.EventPage
 	request(t, h, "GET", "/runs/"+run.ID+"/events?node_run_id="+run.Nodes[0].ID+"&limit=1", nil, 200, &page)

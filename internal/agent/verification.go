@@ -23,8 +23,6 @@ func Verify(ctx context.Context, directory string, args []string, scope string) 
 	if len(args) == 0 || !filepath.IsAbs(args[0]) || !filepath.IsAbs(directory) {
 		return evidence, &workflow.Failure{Kind: "parameter", Cause: errors.New("验证需要管理员登记的绝对程序路径和工作区")}
 	}
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
 	home, err := os.MkdirTemp("", "pangu-verification-")
 	if err != nil {
 		return evidence, err

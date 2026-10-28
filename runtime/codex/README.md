@@ -1,20 +1,16 @@
-# Pangu 原生 Codex 受控构建
+# Pangu 原生 Codex 行为追踪构建
 
-基于 OpenAI Codex `rust-v0.163.0`，固定提交 `83086188ae0614bd882818ff1aa23f3194962012`。保留原生 Agent、模型连接、沙箱、登录和工具实现；增加一个独立计数/时限模块及调用接入。Pangu 仍通过 `codex exec` 调用，不用提示词或事后观察来模拟执行前限制。
+基于 OpenAI Codex rust-v0.163.0，固定提交 83086188ae0614bd882818ff1aa23f3194962012。保留原生模型连接、沙箱、登录和工具实现，增加模型与工具边界上的结构化事件。Pangu 仍调用 codex exec。
 
-- 每次节点尝试启动独立进程。所有经过原生工具注册表的调用在执行前原子计数；失败调用也计数，超限不进入工具处理器。上限为节点策略的 0–10 次。
-- 每个调用持有独立 30 秒计时器。超时直接退出 CLI，Pangu 等待整个 Job/进程组停止后才返回失败；失败工作区不会发布。
-- 原生命令执行强制使用同步完成模式，不提供后台会话或 `write_stdin`，避免通过先返回会话绕开单次时限。
-- 受控模式强制直接工具模式，模型目录不能重新开启异步 Code Mode。Pangu 同时禁用 hooks、清空 legacy notify，避免自动命令或 MCP hook 在注册表之外执行。
-- 托管搜索、图像生成、个人插件、子 Agent 和自动技能安装由 Pangu 关闭。管理员显式注册的 MCP 仍经过工具注册表；远端服务自身的外部副作用不能靠本地进程终止回滚。
-- CLI 进程总时限与节点时限继续有效。工具超限、工具超时不重试；恢复使用已完成检查点。预算按尝试计算，失败尝试中的外部模型调用可能重复计费。
+- 取消工具计数器、30 秒 watchdog、Pangu CLI 总时限。恢复原生长命令会话和 write_stdin；每次真实调用分别记录。
+- 模型请求记录模型名、输入条目/工具数、结束状态和 token 摘要；不输出 reasoning 内容。工具记录实际参数、结果和耗时，通过原生 call_id 关联发起模型。
+- 输出协议为单行 pangu.trace；Go 端为每个 CLI 会话加唯一 span 前缀，并以受信任上下文绑定运行、节点和尝试。入库前脱敏，正文过长有截断标记。追踪写入失败停止后续执行。
+- 保留直接工具模式，关闭托管工具、hooks、legacy notify、个人插件、子 Agent 和自动安装。项目沙箱与专用登录隔离继续生效。
+- 产品经理搜索仅允许 web.run，参数固定为用户授权词；不能借搜索调用其他原生工具。Eino 模型桥通过 PANGU_CODEX_MODEL_ONLY 显式禁止原生工具，由 Eino 工具集执行工具请求。
+- 权限拒绝使用退出码 87，追踪管道故障使用 88。Windows Job Object / 进程组仍负责主动取消与后代终止，远端副作用不能靠本地取消回滚。
 
-策略违规使用原生退出码87、工具时限使用86，不能只返回上游 `Fatal`：固定版本会在工具收尾阶段记录该错误后继续请求模型。Pangu 保留原退出码和脱敏诊断，结束整个进程组后才返回不可重试失败。Windows 显式使用官方非提权沙箱，避免未配置时将 `workspace-write` 降为只读；只读模板仍使用 `read-only`。
+Worker 设置 PANGU_CODEX_TRACE=1；PANGU_CODEX_TRACE_PROBE=1 返回 pangu-codex-trace/1。这是能力检查，不是对恶意可执行文件的签名认证。旧受控构建和普通 CLI 均不满足新协议。
 
-`PANGU_CODEX_TOOL_CALLS` 仅由 Worker 生成，不接受用户直接注入。`PANGU_CODEX_POLICY_PROBE=1` 的探测返回协议标识 `pangu-codex-policy/1`；这是管理员所安装程序的能力检查，不是对恶意可执行文件的签名认证。普通未打补丁的 CLI 会被拒绝。
+执行 scripts/codex-build.ps1 构建到 .tools/codex/codex.exe，不覆盖系统 Codex、不复用个人登录。脚本验证固定源码、补丁、锁文件与 policy.rs，产出源码/补丁/二进制摘要清单，打包拒绝过时构建。上游采用 Apache-2.0；源码留在 .tools，主仓库维护 native.patch 和 policy.rs。
 
-Windows 构建：安装 Git、Rust stable、MSVC C++ 编译工具后，在项目根目录执行 `./scripts/codex-build.ps1`。输出为 `.tools/codex/codex.exe`。脚本逐文件验证固定源码、补丁及锁文件，拒绝额外源码；产出源码/补丁/二进制摘要清单，打包拒绝过时或变更的二进制。不覆盖系统安装的 Codex，也不复用个人登录。当前本机编译器为 Rust 1.96.0。
-
-独立计数测试使用 40 个线程争用 10 个名额。Go 的 `TestNativeCodexDeniesEleventhToolBeforeWriting` 与 `TestNativeCodexToolDeadlineStopsDescendants` 使用真实受控 CLI 和本地 SSE 服务验证真实文件写入、超限拒绝及超时后无后代写入；需设置 `PANGU_CODEX_CONFIG_CHECK=1` 和受控程序路径，不调用外部模型。真实模型质量与平台沙箱验收仍另行执行。
-
-上游采用 Apache-2.0；原生补丁与构建产物须附带上游许可证。上游代码不复制进主仓库，`native.patch` 和 `policy.rs` 是 Pangu 的可复现变更。升级必须重新验证调用覆盖、后台进程、能力探测及上述集成测试，不能直接替换普通 CLI。
+测试使用真实 CLI 对本地 SSE 模拟端点，覆盖超过 10 次工具实际写入、父子 trace、超过 30 秒命令、主动取消和只读沙箱；启用 PANGU_CODEX_CONFIG_CHECK=1 并指定受控程序路径，不调用外部模型。业务模型质量和正式部署验收另行记录。

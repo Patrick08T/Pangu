@@ -12,6 +12,7 @@ import (
 )
 
 type RunDetails struct {
+	Fork *workflow.Fork `json:"fork,omitempty"`
 	RunSummary
 	Definition         *workflow.Definition `json:"definition,omitempty"`
 	SourceRunID        string               `json:"source_run_id,omitempty"`
@@ -56,12 +57,16 @@ func (b Backend) GetRun(ctx context.Context, id string) (*RunDetails, error) {
 	for _, row := range children {
 		out.Nodes = append(out.Nodes, nodeRun(row))
 	}
+	enrichBranches(out, record)
 	sort.Slice(out.Nodes, func(i, j int) bool { return out.Nodes[i].NodeID < out.Nodes[j].NodeID })
 	for _, row := range raw.TaskEvents {
 		out.Events = append(out.Events, runEvent(row))
 	}
 	if err := enrichExecution(ctx, out); err != nil {
 		return nil, err
+	}
+	if !out.LogsExpired && out.Definition != nil {
+		out.Title = taskTitle(*out.Definition)
 	}
 	return out, b.saveHistory(ctx, out)
 }
@@ -103,7 +108,9 @@ func redactExpired(ctx context.Context, out *RunDetails) error {
 	}
 	out.LogsExpired = expired
 	if expired {
+		out.Title = ""
 		out.Definition = nil
+		out.Fork = nil
 		out.Events = []RunEvent{}
 		out.Attempts = []execution.Attempt{}
 		out.AttemptsNextOffset = nil

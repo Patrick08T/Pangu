@@ -15,6 +15,7 @@ import (
 )
 
 type RunSummary struct {
+	Title      string     `json:"title,omitempty"`
 	ProjectID  string     `json:"project_id,omitempty"`
 	CreatedBy  string     `json:"created_by,omitempty"`
 	ID         string     `json:"id"`
@@ -31,6 +32,7 @@ type RunError struct {
 }
 
 type NodeRun struct {
+	ReusedFrom string `json:"reused_from,omitempty"`
 	RunSummary
 	NodeID   string    `json:"node_id"`
 	TaskID   string    `json:"task_id"`

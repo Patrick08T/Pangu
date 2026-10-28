@@ -6,7 +6,7 @@ import {ScheduleEditor} from './editor';
 
 export function Schedules({access}:{access:Access}) {
   const [offset,setOffset]=useState(0),query=useQuery<Schema['CronPage']>(`/crons?project_id=${access.project}&offset=${offset}`,5000);
-  return <Page title="定时计划" description="UTC 时间触发；已有活动运行时跳过，漏跑不补。" actions={canEdit(access)&&<a className="button primary" href="#/schedule/new">新建计划</a>}>
+  return <Page title="自动化" description="在画布上编排助手，或为已发布流程设置定时任务。定时按 UTC 触发，漏跑不补。" actions={<div className="toolbar"><a className="button" href="#/workflow">可视化编排</a>{canEdit(access)&&<a className="button primary" href="#/schedule/new">新建定时计划</a>}</div>}>
     <QueryState {...query} retry={query.reload} empty={!query.data?.items.length?'当前页没有计划。':undefined}/>
     {!!query.data?.items.length&&<div className="table-scroll"><table><thead><tr><th>名称</th><th>UTC 表达式</th><th>状态</th><th>版本</th></tr></thead><tbody>{query.data.items.map(plan=><tr key={plan.id}><td><a href={`#/schedule/${plan.id}`}>{plan.name}</a></td><td><code>{plan.expression}</code></td><td>{plan.deleted?'已删除':plan.paused?'已暂停':plan.ready?'运行中':'同步中'}</td><td className="identifier">{plan.workflow.version_id??'JSON 快照'}</td></tr>)}</tbody></table></div>}
     <Pager offset={offset} next={query.data?.next_offset} change={setOffset}/>

@@ -1,6 +1,6 @@
 {
   "format": "pangu.catalog.v1",
-  "kind": "template",
+  "kind": "agent",
   "name": "产品经理：竞品分析",
   "spec": {
     "agent": {
@@ -10,12 +10,15 @@
       "mode": "competition",
       "model": "project-connection",
       "description": "产品经理：竞品分析",
+      "handoff": {
+        "objective": "比较候选竞品，形成可供产品规划使用的差异结论",
+        "inputs": "候选竞品、比较维度、授权资料及上游调研结果",
+        "deliverables": "中文竞品矩阵、关键差异、机会与证据来源",
+        "acceptance": "按统一维度比较；未知信息标为未知；关键结论有实际证据",
+        "failure_handling": "候选范围或证据不足时明确限制与待确认项，不将未知视为没有"
+      },
       "instruction": "按用户指定的竞品和维度构建比较矩阵，包含目标用户、功能、价格和定位差异。未查到的内容写未知，不能写成没有；为事实注明来源和获取时间。可读取直接上游报告，但其结论仍须核对原来源。",
-      "policy": {
-        "retries": 2,
-        "timeout_seconds": 180,
-        "tool_calls": 10
-      }
+      "policy": {"retries":2}
     }
   }
 }

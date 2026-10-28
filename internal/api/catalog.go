@@ -8,6 +8,12 @@ import (
 )
 
 func (h handler) catalogRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /models/codex", h.codexModels)
+	mux.HandleFunc("POST /catalog/{id}/draft/preflight", h.draftPreflight)
+	mux.HandleFunc("POST /catalog/{id}/trials", h.agentTrials)
+	mux.HandleFunc("GET /catalog/{id}/trials", h.agentTrials)
+	mux.HandleFunc("GET /runnables", h.runnableChoices)
+	mux.HandleFunc("GET /connections/choices", h.connectionChoices)
 	mux.HandleFunc("GET /catalog", h.listCatalog)
 	mux.HandleFunc("POST /catalog", h.createCatalog)
 	mux.HandleFunc("POST /catalog/import", h.importCatalog)
@@ -19,25 +25,29 @@ func (h handler) catalogRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /catalog/{id}/archive", h.archiveCatalog)
 	mux.HandleFunc("GET /catalog/{id}/versions", h.catalogVersions)
 	mux.HandleFunc("GET /versions/{id}", h.catalogVersion)
-	mux.HandleFunc("POST /versions/{id}/bind", h.bindCatalog)
 	mux.HandleFunc("POST /versions/{id}/run", h.runVersion)
 	mux.HandleFunc("POST /versions/{id}/preflight", h.versionPreflight)
 }
 
 func (h handler) listCatalog(w http.ResponseWriter, r *http.Request) {
+	if !h.allowed(w, r, "", "read_catalog", "") {
+		return
+	}
 	offset, err := catalogQuery(r.URL.Query(), false)
 	if err != nil {
 		problem(w, 400, err.Error())
 		return
 	}
-	items, err := catalog.List(r.Context(), h.backend.Namespace(), r.URL.Query().Get("kind"), r.URL.Query().Get("project_id"), offset)
+	items, err := catalog.List(r.Context(), h.backend.Namespace(), r.URL.Query().Get("kind"), offset)
 	if backendError(w, err) {
 		return
 	}
-	result, err := h.catalogPage(r.Context(), items, offset)
-	if !backendError(w, err) {
-		write(w, 200, result)
+	result := page[catalog.Object]{Items: items}
+	if len(items) == 100 {
+		next := int64(offset + 100)
+		result.NextOffset = &next
 	}
+	write(w, 200, result)
 }
 
 func (h handler) createCatalog(w http.ResponseWriter, r *http.Request) {
@@ -49,7 +59,7 @@ func (h handler) createCatalog(w http.ResponseWriter, r *http.Request) {
 		problem(w, 400, err.Error())
 		return
 	}
-	if !h.allowed(w, r, input.ProjectID, catalogAction(input.Kind, "configure"), "") {
+	if !h.allowed(w, r, "", catalogAction("configure"), "") {
 		return
 	}
 	item, err := catalog.Create(r.Context(), h.backend.Namespace(), input)
@@ -164,7 +174,7 @@ func (h handler) catalogVersion(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h handler) bindCatalog(w http.ResponseWriter, r *http.Request) {
+func (h handler) runVersion(w http.ResponseWriter, r *http.Request) {
 	if !validID(w, r) {
 		return
 	}
@@ -172,41 +182,21 @@ func (h handler) bindCatalog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
-		ProjectID         string `json:"project_id"`
-		Name              string `json:"name"`
-		ConnectionVersion string `json:"connection_version"`
+		Input     string `json:"input"`
+		ProjectID string `json:"project_id"`
 	}
 	if !decode(w, r, &input) {
 		return
 	}
-	if !h.allowed(w, r, input.ProjectID, "configure", "") {
-		return
-	}
-	item, err := catalog.Bind(r.Context(), h.backend.Namespace(), r.PathValue("id"), input.ProjectID, input.Name, input.ConnectionVersion)
-	if !backendError(w, err) {
-		write(w, 201, item)
-	}
-}
-
-func (h handler) runVersion(w http.ResponseWriter, r *http.Request) {
-	if !validID(w, r) {
-		return
-	}
-	if !h.catalogAllowed(w, r, true, "run") {
-		return
-	}
-	var input struct {
-		Input string `json:"input"`
-	}
-	if !decode(w, r, &input) {
+	if !h.allowed(w, r, input.ProjectID, "run", "") {
 		return
 	}
 	key := r.Header.Get("Idempotency-Key")
-	if len(r.Header.Values("Idempotency-Key")) != 1 || !submission.ValidKey(key) {
+	if len(r.Header.Values("Idempotency-Key")) != 1 || !submission.PublicKey(key) {
 		problem(w, 400, "需要有效且唯一的 Idempotency-Key")
 		return
 	}
-	item, err := h.versionSubmission(r.Context(), r.PathValue("id"), input.Input, key)
+	item, err := h.versionSubmission(r.Context(), r.PathValue("id"), input.ProjectID, input.Input, key)
 	if !backendError(w, err) {
 		w.Header().Set("Location", "/api/requests/"+item.ID)
 		write(w, 202, item)

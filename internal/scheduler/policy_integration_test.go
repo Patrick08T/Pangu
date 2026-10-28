@@ -11,7 +11,7 @@ import (
 	"github.com/Patrick08T/Pangu/internal/workflow"
 )
 
-func TestHatchetNodePoliciesControlRetriesAndDeadlines(t *testing.T) {
+func TestHatchetNodePoliciesControlRetriesWithoutBusinessDeadlines(t *testing.T) {
 	_, client := integrationClient(t)
 	var mu sync.Mutex
 	counts := map[string]int{}
@@ -49,7 +49,7 @@ func TestHatchetNodePoliciesControlRetriesAndDeadlines(t *testing.T) {
 		id               string
 		retries, seconds int
 	}{{"once", 0, 10}, {"retry", 2, 10}, {"short", 0, 1}, {"long", 0, 5}, {"auth", 2, 10}} {
-		d.Nodes = append(d.Nodes, workflow.Node{ID: item.id, Executor: "eino", Model: "test", Instruction: "策略验证", Policy: &workflow.Policy{Retries: item.retries, TimeoutSeconds: item.seconds, ToolCalls: 0}})
+		d.Nodes = append(d.Nodes, workflow.Node{ID: item.id, Executor: "eino", Model: "test", Handoff: testHandoff(), Instruction: "策略验证", Policy: &workflow.Policy{Retries: item.retries}})
 	}
 	record, err := b.Submit(context.Background(), d, "node-policy")
 	if err != nil {
@@ -62,13 +62,13 @@ func TestHatchetNodePoliciesControlRetriesAndDeadlines(t *testing.T) {
 		t.Fatalf("策略未实际生效: %+v", counts)
 	}
 	for _, node := range run.Nodes {
-		if node.NodeID == "long" && node.Status != "succeeded" {
-			t.Fatal("同层长超时节点未收敛")
+		if (node.NodeID == "long" || node.NodeID == "short") && node.Status != "succeeded" {
+			t.Fatal("同层节点未正常收敛")
 		}
 	}
 	for _, attempt := range run.Attempts {
-		if attempt.NodeID == "short" && attempt.Category != "timeout" {
-			t.Fatalf("超时分类丢失: %+v", attempt)
+		if attempt.NodeID == "short" && attempt.Status != "succeeded" {
+			t.Fatalf("旧时限仍阻断执行: %+v", attempt)
 		}
 	}
 }

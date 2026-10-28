@@ -4,13 +4,29 @@
     {
       "id": "plan",
       "executor": "codex",
-      "instruction": "只读取当前项目，分析结构和启动方式，为 input 给出简短写作计划，不修改文件。"
+      "instruction": "只读取当前项目，分析结构和启动方式，为 input 给出简短写作计划，不修改文件。",
+      "handoff": {
+        "objective": "只读取当前项目，分析结构和启动方式，为 input 给出简短写作计划，不修改文件。",
+        "inputs": "本次任务输入及已完成的上游节点结果",
+        "deliverables": "与本节点职责相符的结果和交接说明",
+        "acceptance": "满足本节点要求，说明实际验证依据及仍未解决的问题",
+        "failure_handling": "输入不足或无法完成时明确原因和缺口，不伪造完成"
+      }
     },
     {
       "id": "write",
       "executor": "codex",
       "instruction": "根据 input 和 parents.plan.text，在当前项目落实写作计划。实际写入文件，并在最终回复中说明修改路径和验证结果。",
-      "depends_on": ["plan"]
+      "depends_on": [
+        "plan"
+      ],
+      "handoff": {
+        "objective": "根据 input 和 parents.plan.text，在当前项目落实写作计划。实际写入文件，并在最终回复中说明修改路径和验证结果。",
+        "inputs": "本次任务输入及已完成的上游节点结果",
+        "deliverables": "与本节点职责相符的结果和交接说明",
+        "acceptance": "满足本节点要求，说明实际验证依据及仍未解决的问题",
+        "failure_handling": "输入不足或无法完成时明确原因和缺口，不伪造完成"
+      }
     }
   ]
 }

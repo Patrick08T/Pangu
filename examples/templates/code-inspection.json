@@ -1,18 +1,21 @@
 {
   "format": "pangu.catalog.v1",
-  "kind": "template",
+  "kind": "agent",
   "name": "只读项目巡检",
   "spec": {
     "agent": {
       "id": "inspect",
       "executor": "codex",
+      "handoff": {
+        "objective": "只读检查本次指定范围，发现可复现问题",
+        "inputs": "本次检查目标、授权项目文件与上游上下文",
+        "deliverables": "中文巡检报告：严重度、位置、依据、复现方式与修复建议",
+        "acceptance": "已验证问题与推测分开；不修改项目文件或执行写入命令",
+        "failure_handling": "无法验证时明确限制及所缺条件，不伪造结论；没有发现时说明已检查范围"
+      },
       "instruction": "只读检查用户指定范围，按严重度列出可复现问题、文件位置、依据与修复建议。区分已验证问题与推测。不得修改任何项目文件，不运行会写入项目的命令，不提交或推送。输出中文巡检结果。",
       "read_only": true,
-      "policy": {
-        "retries": 2,
-        "timeout_seconds": 1800,
-        "tool_calls": 10
-      }
+      "policy": {"retries":2}
     }
   }
 }

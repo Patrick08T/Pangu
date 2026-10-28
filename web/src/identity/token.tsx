@@ -3,7 +3,7 @@ import {useAction,useQuery} from '../api/hooks';
 import {apiRequest} from '../api/request';
 import {ActionNotice,Page,QueryState,canEdit,isManager,timestamp,type Access,type Schema} from '../console/components';
 
-const labels:Record<string,string>={read:'读取',run:'发起运行',configure:'修改配置',schedule:'创建计划',manage_run:'管理运行',manage_schedule:'管理计划',manage_connections:'管理模型连接'};
+const labels:Record<string,string>={read:'读取',run:'发起运行',configure:'修改配置',schedule:'创建计划',manage_run:'管理运行',manage_schedule:'管理计划',manage_connections:'管理模型连接',manage_factory:'管理工厂对话'};
 export function Tokens({access}:{access:Access}) {
   const query=useQuery<Schema['APIToken'][]>('/auth/tokens'),action=useAction();
   const [name,setName]=useState(''),[days,setDays]=useState(30),[scopes,setScopes]=useState<string[]>(['read']),[value,setValue]=useState('');

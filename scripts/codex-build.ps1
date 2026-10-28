@@ -10,7 +10,7 @@ if(!(Test-Path -LiteralPath $source)){
 }
 $head=& git -C $source rev-parse HEAD
 if($LASTEXITCODE -ne 0 -or $head -ne $revision){throw 'Codex 源码版本不匹配，拒绝构建'}
-$applied=[IO.File]::ReadAllText("$source/codex-rs/core/src/tools/registry.rs").Contains('let _pangu_budget =')
+$applied=[IO.File]::ReadAllText("$source/codex-rs/core/src/tools/registry.rs").Contains('let mut pangu_span =')
 if($applied){
     & git -C $source apply --reverse --check $patch
     if($LASTEXITCODE -ne 0){throw '现有补丁不完整，拒绝构建'}
@@ -28,9 +28,9 @@ $lock=[IO.File]::ReadAllText($lockPath).Replace('version = "0.0.0"','version = "
 . "$PSScriptRoot/codex-source.ps1"
 Assert-CodexSource $source $patch "$projectRoot/runtime/codex/policy.rs"
 & rustc +stable --edition 2024 --test "$projectRoot/runtime/codex/policy.rs" -o "$projectRoot/.tools/codex-policy-test.exe"
-if($LASTEXITCODE -ne 0){throw '工具限制测试编译失败'}
+if($LASTEXITCODE -ne 0){throw '行为追踪测试编译失败'}
 & "$projectRoot/.tools/codex-policy-test.exe"
-if($LASTEXITCODE -ne 0){throw '工具限制测试失败'}
+if($LASTEXITCODE -ne 0){throw '行为追踪测试失败'}
 Push-Location -LiteralPath "$source/codex-rs"
 try {
     & cargo +stable build -p codex-cli --bin codex --release --locked -j 4

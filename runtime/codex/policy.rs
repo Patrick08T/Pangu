@@ -1,91 +1,102 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
-use std::time::Duration;
+use std::collections::HashMap;
+use std::io::Write;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{LazyLock, Mutex};
+use std::time::Instant;
 
-static USED: AtomicUsize = AtomicUsize::new(0);
+static NEXT: AtomicU64 = AtomicU64::new(1);
+static PARENTS: LazyLock<Mutex<HashMap<String, String>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
-pub(crate) struct Guard(Sender<()>);
+pub(crate) fn enabled() -> bool {
+    std::env::var("PANGU_CODEX_TRACE").as_deref() == Ok("1")
+}
 
-impl Drop for Guard {
-    fn drop(&mut self) {
-        let _ = self.0.send(());
+pub(crate) struct Span {
+    id: String,
+    parent: String,
+    kind: &'static str,
+    name: String,
+    started: Instant,
+    finished: bool,
+}
+
+impl Span {
+    pub(crate) fn start(kind: &'static str, name: &str, input: &str, call: &str) -> Self {
+        let span = Self {
+            id: NEXT.fetch_add(1, Ordering::Relaxed).to_string(),
+            parent: PARENTS.lock().unwrap().remove(call).unwrap_or_default(),
+            kind, name: name.to_owned(), started: Instant::now(), finished: false,
+        };
+        span.emit("start", "running", input, "", "");
+        span
+    }
+
+    pub(crate) fn link(&self, call: &str) {
+        if enabled() {
+            PARENTS.lock().unwrap().insert(call.to_owned(), self.id.clone());
+        }
+    }
+
+    pub(crate) fn finish(&mut self, status: &str, output: &str, error: &str) {
+        if !self.finished {
+            self.emit("end", status, "", output, error);
+            self.finished = true;
+        }
+    }
+
+    fn emit(&self, phase: &str, status: &str, input: &str, output: &str, error: &str) {
+        if !enabled() { return; }
+        let (input, a) = clip(input);
+        let (output, b) = clip(output);
+        let (error, c) = clip(error);
+        let line = format!(
+            "{{\"type\":\"pangu.trace\",\"span_id\":{},\"parent_span_id\":{},\"kind\":{},\"phase\":{},\"name\":{},\"duration_ms\":{},\"status\":{},\"input\":{},\"output\":{},\"error\":{},\"truncated\":{}}}",
+            quote(&self.id), quote(&self.parent), quote(self.kind), quote(phase), quote(&self.name),
+            self.started.elapsed().as_millis(), quote(status), quote(input), quote(output), quote(error), a || b || c
+        );
+        // 追踪管道失败时停止执行，避免继续产生无法记录的行为。
+        if writeln!(std::io::stdout().lock(), "{line}").is_err() { std::process::exit(88); }
     }
 }
 
-pub(crate) fn enabled() -> bool {
-    std::env::var_os("PANGU_CODEX_TOOL_CALLS").is_some()
+impl Drop for Span {
+    fn drop(&mut self) {
+        self.finish("cancelled", "", "操作中断，未收到完成结果");
+    }
 }
 
-pub(crate) fn enter() -> Result<Option<Guard>, String> {
-    let value = match std::env::var("PANGU_CODEX_TOOL_CALLS") {
-        Ok(value) => value,
-        Err(std::env::VarError::NotPresent) => return Ok(None),
-        Err(_) => return Err("PANGU_POLICY_INVALID".into()),
-    };
-    let limit = value
-        .parse::<usize>()
-        .ok()
-        .filter(|v| *v <= 10)
-        .ok_or_else(|| "PANGU_POLICY_INVALID".to_owned())?;
-    reserve(&USED, limit)?;
-    let (sender, receiver) = std::sync::mpsc::channel();
-    std::thread::Builder::new()
-        .name("pangu-tool-deadline".into())
-        .spawn(move || {
-            if expired(receiver, Duration::from_secs(30)) {
-                eprintln!("PANGU_POLICY_TIMEOUT");
-                // 立即退出，让 Pangu 的 Job/进程组停止全部子进程并拒绝发布尝试。
-                std::process::exit(86);
-            }
-        })
-        .map_err(|_| "PANGU_POLICY_WATCHDOG_UNAVAILABLE".to_owned())?;
-    Ok(Some(Guard(sender)))
+fn clip(value: &str) -> (&str, bool) {
+    let mut end = value.len().min(65536);
+    while !value.is_char_boundary(end) { end -= 1; }
+    (&value[..end], end < value.len())
 }
 
-fn reserve(used: &AtomicUsize, limit: usize) -> Result<(), String> {
-    used.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |value| {
-        if value < limit { Some(value + 1) } else { None }
-    })
-    .map(|_| ())
-    .map_err(|_| "PANGU_POLICY_TOOL_LIMIT".to_owned())
-}
-
-fn expired(receiver: Receiver<()>, timeout: Duration) -> bool {
-    matches!(
-        receiver.recv_timeout(timeout),
-        Err(RecvTimeoutError::Timeout)
-    )
+fn quote(value: &str) -> String {
+    let mut out = String::from("\"");
+    for c in value.chars() {
+        match c {
+            '"' => out.push_str("\\\""), '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"), '\r' => out.push_str("\\r"), '\t' => out.push_str("\\t"),
+            c if c < ' ' => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
+mod trace_tests {
     #[test]
-    fn concurrent_calls_never_exceed_budget() {
-        let used = std::sync::Arc::new(AtomicUsize::new(0));
-        let threads: Vec<_> = (0..40)
-            .map(|_| {
-                let used = used.clone();
-                std::thread::spawn(move || reserve(&used, 10).is_ok())
-            })
-            .collect();
-        let accepted = threads
-            .into_iter()
-            .filter_map(|t| t.join().ok())
-            .filter(|v| *v)
-            .count();
-        assert_eq!(accepted, 10);
-        assert!(reserve(&AtomicUsize::new(0), 0).is_err());
+    fn escapes_control_characters_and_utf8() {
+        assert_eq!(super::quote("a\n\"\\中\u{0001}"), "\"a\\n\\\"\\\\中\\u0001\"");
     }
-
     #[test]
-    fn deadline_expires_but_completed_calls_cancel_watchdog() {
-        let (sender, receiver) = std::sync::mpsc::channel();
-        assert!(expired(receiver, Duration::from_millis(10)));
-        drop(sender);
-        let (sender, receiver) = std::sync::mpsc::channel();
-        drop(sender);
-        assert!(!expired(receiver, Duration::from_secs(30)));
+    fn events_are_bounded_without_splitting_utf8() {
+        let text = "中".repeat(40000);
+        let (short, clipped) = super::clip(&text);
+        assert!(clipped);
+        assert!(short.len() <= 65536);
+        assert!(text.starts_with(short));
     }
 }

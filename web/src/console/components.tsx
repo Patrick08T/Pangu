@@ -4,8 +4,9 @@ import type { components } from '../api/schema';
 
 export type Schema = components['schemas'];
 export type Session = Schema['Actor'];
-export type Access = { session: Session; project: string; role: string };
+export type Access = { session: Session; project: string; role: string; catalogManager?: boolean };
 export const canEdit = (access: Access) => access.role === 'manager' || access.role === 'operator';
+export const canManageCatalog = (access: Access) => access.session.admin || access.catalogManager === true || access.role === 'manager';
 export const isManager = (access: Access) => access.role === 'manager';
 export const timestamp = (value?: string) => value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '—';
 
