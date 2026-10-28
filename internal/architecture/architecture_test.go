@@ -16,17 +16,21 @@ func TestModuleBoundariesAndFunctionSize(t *testing.T) {
 	_, current, _, _ := runtime.Caller(0)
 	root := filepath.Dir(filepath.Dir(filepath.Dir(current)))
 	allowed := map[string][]string{
-		"workflow": {}, "database": {}, "diagnostic": {}, "agent": {"workflow", "diagnostic", "catalog", "research"},
-		"research":   {"workflow", "workspace", "database", "diagnostic"},
+		"workflow": {}, "database": {}, "diagnostic": {}, "trace": {"database", "diagnostic", "workflow"}, "agent": {"trace", "workflow", "diagnostic", "catalog", "research", "usage"},
+		"research":   {"trace", "workflow", "workspace", "database", "diagnostic", "usage", "identity"},
 		"identity":   {"database", "audit"},
 		"audit":      {"database"},
-		"execution":  {"database", "diagnostic", "workflow", "agent"},
+		"execution":  {"identity", "database", "diagnostic", "workflow", "agent"},
 		"workspace":  {"database", "diagnostic", "workflow"},
 		"artifact":   {"workspace", "diagnostic", "research"},
 		"catalog":    {"database", "workflow"},
+		"factory":    {"database", "catalog", "workflow", "submission", "identity"},
+		"evaluation": {"database", "diagnostic", "identity"}, "usage": {"database", "workflow"}, "webhook": {"database", "workflow", "identity", "catalog", "submission", "diagnostic"},
+		"approval":   {"database", "diagnostic", "identity", "workflow"},
+		"delivery":   {"database", "catalog", "research", "workflow", "submission"},
 		"submission": {"database", "workflow", "diagnostic", "identity"},
 		"schedule":   {"database", "workflow", "submission", "identity"},
-		"scheduler":  {"workflow", "diagnostic", "execution", "workspace", "submission", "schedule", "catalog", "research", "agent"}, "api": {"workflow", "scheduler", "database", "execution", "workspace", "artifact", "submission", "schedule", "catalog", "identity", "audit"},
+		"scheduler":  {"trace", "factory", "workflow", "diagnostic", "execution", "workspace", "submission", "schedule", "catalog", "research", "agent", "evaluation", "approval", "delivery", "usage"}, "api": {"trace", "factory", "workflow", "scheduler", "database", "execution", "workspace", "artifact", "submission", "schedule", "catalog", "identity", "audit", "evaluation", "approval", "research", "delivery", "usage", "webhook", "diagnostic"},
 	}
 	for _, directory := range []string{"cmd", "internal", "api", "web"} {
 		err := filepath.WalkDir(filepath.Join(root, directory), func(path string, entry os.DirEntry, err error) error {

@@ -1,3 +1,57 @@
+diff --git a/codex-rs/core/src/client.rs b/codex-rs/core/src/client.rs
+index 9ef4c05..fc577bc 100644
+--- a/codex-rs/core/src/client.rs
++++ b/codex-rs/core/src/client.rs
+@@ -2364,6 +2364,26 @@ impl ModelClientSession {
+         service_tier: Option<String>,
+         responses_metadata: &CodexResponsesMetadata,
+         inference_trace: &InferenceTraceContext,
++    ) -> Result<ResponseStream> {
++        let mut span = crate::tools::pangu_policy::Span::start("model", &model_info.slug,
++            &format!("input_items={}, tools={}", prompt.input.len(), prompt.tools.len()), "");
++        match self.stream_untraced(prompt, model_info, session_telemetry, effort, summary,
++            service_tier, responses_metadata, inference_trace).await {
++            Ok(stream) => Ok(pangu_response_stream(stream, span)),
++            Err(error) => { span.finish("failed", "", &error.to_string()); Err(error) }
++        }
++    }
++
++    async fn stream_untraced(
++        &mut self,
++        prompt: &Prompt,
++        model_info: &ModelInfo,
++        session_telemetry: &SessionTelemetry,
++        effort: Option<ReasoningEffortConfig>,
++        summary: ReasoningSummaryConfig,
++        service_tier: Option<String>,
++        responses_metadata: &CodexResponsesMetadata,
++        inference_trace: &InferenceTraceContext,
+     ) -> Result<ResponseStream> {
+         let wire_api = self.client.state.provider.info().wire_api;
+         match wire_api {
+@@ -3083,3 +3103,22 @@ impl WebsocketTelemetry for ApiTelemetry {
+ #[cfg(test)]
+ #[path = "client_tests.rs"]
+ mod tests;
++
++fn pangu_response_stream(mut stream: ResponseStream, mut span: crate::tools::pangu_policy::Span) -> ResponseStream {
++    let interrupt = stream.interrupt.take();
++    let consumer_dropped = stream.consumer_dropped.clone();
++    let (sender, rx_event) = tokio::sync::mpsc::channel(1);
++    tokio::spawn(async move {
++        while let Some(event) = stream.next().await {
++            match &event {
++                Ok(ResponseEvent::OutputItemDone(ResponseItem::FunctionCall { call_id, .. } |
++                    ResponseItem::CustomToolCall { call_id, .. })) => span.link(call_id),
++                Ok(ResponseEvent::Completed { token_usage, .. }) => span.finish("succeeded", &format!("usage={token_usage:?}"), ""),
++                Err(error) => span.finish("failed", "", &error.to_string()),
++                _ => {}
++            }
++            if sender.send(event).await.is_err() { break; }
++        }
++    });
++    ResponseStream { rx_event, interrupt, consumer_dropped }
++}
 diff --git a/codex-rs/core/src/tools/mod.rs b/codex-rs/core/src/tools/mod.rs
 index 501ce5f..4410a6e 100644
 --- a/codex-rs/core/src/tools/mod.rs
@@ -19,45 +73,74 @@ index 501ce5f..4410a6e 100644
          if turn_context.config.features.enabled(Feature::CodeModeOnly) {
              ToolMode::CodeModeOnly
 diff --git a/codex-rs/core/src/tools/registry.rs b/codex-rs/core/src/tools/registry.rs
-index ebde5a7..af7fe0c 100644
+index ebde5a7..eee96da 100644
 --- a/codex-rs/core/src/tools/registry.rs
 +++ b/codex-rs/core/src/tools/registry.rs
-@@ -617,6 +617,10 @@ impl ToolRegistry {
+@@ -617,6 +617,30 @@ impl ToolRegistry {
          mut invocation: ToolInvocation,
          call_state: Option<Arc<ToolCallState>>,
      ) -> Result<AnyToolResult, FunctionCallError> {
-+        let _pangu_budget = super::pangu_policy::enter().unwrap_or_else(|error| {
-+            eprintln!("{error}");
++        if let Ok(query) = std::env::var("PANGU_CODEX_SEARCH_QUERY") {
++            match &mut invocation.payload {
++                ToolPayload::Function { arguments }
++                    if invocation.tool_name == ToolName::namespaced("web", "run") => {
++                    // Only the user-authorized query reaches native search, never model-supplied commands.
++                    *arguments = serde_json::json!({
++                        "search_query": [{"q": query}], "response_length": "short"
++                    }).to_string();
++                }
++                _ => {
++                    let mut rejected = super::pangu_policy::Span::start("tool", &invocation.tool_name.to_string(),
++                        tool_log_payload(&invocation.payload, &invocation.source).as_ref(), &invocation.call_id);
++                    rejected.finish("failed", "", "公开搜索会话禁止调用其他工具");
++                    eprintln!("PANGU_POLICY_SEARCH_ONLY");
++                    std::process::exit(87);
++                }
++            }
++        }
++        let mut pangu_span = super::pangu_policy::Span::start("tool", &invocation.tool_name.to_string(),
++            tool_log_payload(&invocation.payload, &invocation.source).as_ref(), &invocation.call_id);
++        if std::env::var("PANGU_CODEX_MODEL_ONLY").as_deref() == Ok("1") {
++            pangu_span.finish("failed", "", "模型后端禁止调用原生工具");
 +            std::process::exit(87);
-+        });
++        }
          let cancellation_token = invocation.cancellation_token.clone();
          let tool_name = invocation.tool_name.clone();
          let call_id_owned = invocation.call_id.clone();
+@@ -796,6 +820,10 @@ impl ToolRegistry {
+                 },
+             )
+             .await;
++        match &result {
++            Ok(value) => pangu_span.finish(if value.result.success_for_logging() {"succeeded"} else {"failed"}, &value.result.log_output(), ""),
++            Err(error) => pangu_span.finish("failed", "", &error.to_string()),
++        }
+         let success = match &result {
+             Ok(result) => result.result.success_for_logging(),
+             Err(_) => false,
 diff --git a/codex-rs/core/src/tools/spec_plan.rs b/codex-rs/core/src/tools/spec_plan.rs
-index fd5b5e1..15f1311 100644
+index fd5b5e1..40b2611 100644
 --- a/codex-rs/core/src/tools/spec_plan.rs
 +++ b/codex-rs/core/src/tools/spec_plan.rs
-@@ -1274,7 +1274,9 @@ fn add_shell_tools(context: &CoreToolPlanContext<'_>, registry: &mut ToolRegistr
-         include_environment_id,
-         include_windows_shell_guidance: should_include_windows_shell_guidance(context.environments),
-     };
--    if features.enabled(Feature::UnifiedExec) {
-+    if super::pangu_policy::enabled() {
-+        registry.add(ExecCommandHandler::one_shot(options));
-+    } else if features.enabled(Feature::UnifiedExec) {
-         registry.add(ExecCommandHandler::new(options));
-         registry.add(WriteStdinHandler);
-     } else {
+@@ -689,7 +689,7 @@ fn hosted_model_tool_specs(
+     registered_extension_tool_names: &[ToolName],
+ ) -> Vec<ToolSpec> {
+     // Responses Lite accepts schemas for client-executed tools, not hosted Responses tools.
+-    if model_info.use_responses_lite {
++    if model_info.use_responses_lite || super::pangu_policy::enabled() {
+         return Vec::new();
+     }
+ 
 diff --git a/codex-rs/exec/src/lib.rs b/codex-rs/exec/src/lib.rs
-index f97ce42..bcfac79 100644
+index f97ce42..23cf851 100644
 --- a/codex-rs/exec/src/lib.rs
 +++ b/codex-rs/exec/src/lib.rs
 @@ -260,6 +260,10 @@ fn exec_stderr_env_filter() -> EnvFilter {
  }
  
  pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
-+    if std::env::var("PANGU_CODEX_POLICY_PROBE").as_deref() == Ok("1") {
-+        println!("pangu-codex-policy/1");
++    if std::env::var("PANGU_CODEX_TRACE_PROBE").as_deref() == Ok("1") {
++        println!("pangu-codex-trace/1");
 +        return Ok(());
 +    }
      if let Err(err) = set_default_originator("codex_exec".to_string()) {

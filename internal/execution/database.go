@@ -53,7 +53,10 @@ func Begin(ctx context.Context, item *Attempt) error {
 		return err
 	}
 	defer tx.Rollback(context.Background())
-	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", item.RunID); err != nil {
+	if err := debugLock(ctx, tx, item.RunID); err != nil {
+		return err
+	}
+	if err := consumeStep(ctx, tx, item); err != nil {
 		return err
 	}
 	var active int

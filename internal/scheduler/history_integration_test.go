@@ -23,7 +23,7 @@ func TestHatchetHistorySurvivesRemoteExpiry(t *testing.T) {
 	_, b, h := integrationSetup(t)
 	project := registerTestProject(t, b)
 	ctx := context.Background()
-	d := workflow.Definition{ProjectID: project.ID, Input: "临时私密输入", Nodes: []workflow.Node{{ID: "one", Executor: "eino", Model: "one", Instruction: "临时指令"}}}
+	d := workflow.Definition{ProjectID: project.ID, Input: "临时私密输入", Nodes: []workflow.Node{{ID: "one", Executor: "eino", Model: "one", Handoff: testHandoff(), Instruction: "临时指令"}}}
 	receipt, err := b.Submit(ctx, d, "history")
 	if err != nil {
 		t.Fatal(err)

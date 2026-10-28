@@ -26,6 +26,10 @@ func TestNativeCodexClassifiesLocalAuthenticationFailure(t *testing.T) {
 	}))
 	defer server.Close()
 	home, dir := t.TempDir(), t.TempDir()
+	dir = filepath.Join(dir, "project.with.dots")
+	if err := os.Mkdir(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("PANGU_CODEX_HOME", home)
 	config := fmt.Sprintf("model_provider=\"local\"\n[model_providers.local]\nname=\"local\"\nbase_url=%q\nwire_api=\"responses\"\nrequires_openai_auth=false\nrequest_max_retries=0\nstream_max_retries=0\n", server.URL)
 	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte(config), 0600); err != nil {

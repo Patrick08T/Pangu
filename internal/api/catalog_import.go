@@ -24,7 +24,7 @@ func (h handler) importCatalog(w http.ResponseWriter, r *http.Request) {
 		problem(w, 400, err.Error())
 		return
 	}
-	if !h.allowed(w, r, document.ProjectID, catalogAction(document.Kind, "configure"), "") {
+	if !h.allowed(w, r, "", catalogAction("configure"), "") {
 		return
 	}
 	item, err := catalog.Create(r.Context(), h.backend.Namespace(), document.NewObject)
@@ -50,7 +50,7 @@ func (h handler) exportCatalog(w http.ResponseWriter, r *http.Request) {
 		if backendError(w, err) {
 			return
 		}
-		item = catalog.NewObject{Kind: v.Kind, ProjectID: v.ProjectID, Name: object.Name, Spec: v.Spec}
+		item = catalog.NewObject{Kind: v.Kind, Name: object.Name, Spec: v.Spec}
 	} else {
 		object, err := catalog.Get(r.Context(), h.backend.Namespace(), r.PathValue("id"))
 		if backendError(w, err) {

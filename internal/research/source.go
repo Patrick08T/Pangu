@@ -7,14 +7,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
-	"net/url"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/Patrick08T/Pangu/internal/diagnostic"
+	"github.com/Patrick08T/Pangu/internal/usage"
 	"github.com/Patrick08T/Pangu/internal/workspace"
 )
 
@@ -30,52 +27,38 @@ func (s *Session) addSource(address, title string) Source {
 	return source
 }
 
+type SearchResult struct {
+	URL   string `json:"url"`
+	Title string `json:"title"`
+}
+
 func (s *Session) search(ctx context.Context, query string) (string, error) {
-	key := os.Getenv("PANGU_SEARCH_API_KEY")
-	if key == "" {
-		return "", errors.New("搜索服务凭据尚未配置")
+	if s.searchPublic == nil {
+		return "", errors.New("Codex 联网搜索未就绪")
 	}
-	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.search.brave.com/res/v1/web/search?q="+url.QueryEscape(query)+"&count=5", nil)
+	id, err := usage.Reserve(ctx, "search", "codex", nil)
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("X-Subscription-Token", key)
-	req.Header.Set("Accept", "application/json")
-	// 搜索凭据只能发送给固定端点，不跟随重定向。
-	client := *s.client
-	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	resp, err := client.Do(req)
+	items, err := s.searchPublic(ctx, query)
+	err = errors.Join(err, usage.Finish(id, nil, err == nil))
 	if err != nil {
-		return "", errors.New("公开搜索请求失败")
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("公开搜索返回 HTTP %d", resp.StatusCode)
-	}
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024+1))
-	if err != nil || len(raw) > 2*1024*1024 {
-		return "", errors.New("搜索响应失败或超限")
-	}
-	var body struct {
-		Web struct {
-			Results []struct {
-				URL   string `json:"url"`
-				Title string `json:"title"`
-			} `json:"results"`
-		} `json:"web"`
-	}
-	if err = json.Unmarshal(raw, &body); err != nil {
-		return "", errors.New("搜索响应格式无效")
+		return "", err
 	}
 	results := []Source{}
-	for _, item := range body.Web.Results {
+	seen := map[string]bool{}
+	for _, item := range items {
 		if len(results) == 5 {
 			break
 		}
-		if _, err := webURL(item.URL); err != nil {
+		if _, err := webURL(item.URL); err != nil || seen[item.URL] {
 			continue
 		}
+		seen[item.URL] = true
 		results = append(results, s.addSource(item.URL, item.Title))
+	}
+	if len(items) > 0 && len(results) == 0 {
+		return "", errors.New("Codex 搜索未返回可读取的 HTTPS 公共来源")
 	}
 	data, err := json.Marshal(results)
 	return string(data), err
@@ -96,6 +79,7 @@ func (s *Session) readWeb(ctx context.Context, id string) (string, error) {
 	hash := sha256.Sum256([]byte(text))
 	source.URL, source.Read, source.RetrievedAt, source.SHA256 = address, true, time.Now().UTC(), hex.EncodeToString(hash[:])
 	s.sources[id] = source
+	s.sourceText[id] = text
 	return sourceResult(source, text)
 }
 
@@ -109,6 +93,7 @@ func (s *Session) readProject(ctx context.Context, index int) (string, error) {
 	id := fmt.Sprintf("d%d", index)
 	source := Source{ID: id, Title: path + "（原始基准 " + commit + "）", Read: true, RetrievedAt: time.Now().UTC(), SHA256: hex.EncodeToString(hash[:])}
 	s.sources[id] = source
+	s.sourceText[id] = string(data)
 	return sourceResult(source, string(data))
 }
 

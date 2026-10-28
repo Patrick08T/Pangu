@@ -65,7 +65,7 @@ func (b Backend) cancelTree(ctx context.Context, id string) (bool, error) {
 }
 
 func terminal(status string) bool {
-	return status == "succeeded" || status == "failed" || status == "cancelled"
+	return status == "succeeded" || status == "failed" || status == "cancelled" || status == "skipped"
 }
 
 func (b Backend) Reconcile(ctx context.Context) error {
@@ -116,6 +116,16 @@ func (b Backend) Maintain(ctx context.Context) {
 			}
 			if err := b.reconcileSubmissions(check); err != nil {
 				slog.Warn("提交对账未完成，将重试")
+			}
+			cancel()
+			check, cancel = context.WithTimeout(ctx, 10*time.Second)
+			if err := b.ReconcileApprovals(check); err != nil {
+				slog.Warn("审批事件交接未完成，将重试")
+			}
+			cancel()
+			check, cancel = context.WithTimeout(ctx, 10*time.Second)
+			if err := b.ReconcileFactory(check); err != nil {
+				slog.Warn("工厂对话结果同步未完成，将重试")
 			}
 			cancel()
 		}

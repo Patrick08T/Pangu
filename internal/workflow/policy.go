@@ -7,30 +7,20 @@ import (
 )
 
 type Policy struct {
-	Retries        int `json:"retries"`
-	TimeoutSeconds int `json:"timeout_seconds"`
-	ToolCalls      int `json:"tool_calls"`
+	Retries int `json:"retries"`
 }
 
 func (n Node) EffectivePolicy() Policy {
 	if n.Policy != nil {
 		return *n.Policy
 	}
-	seconds := 180
-	if n.Executor == "codex" {
-		seconds = 1800
-	}
-	return Policy{Retries: 2, TimeoutSeconds: seconds, ToolCalls: 10}
+	return Policy{Retries: 2}
 }
 
 func (n Node) validatePolicy() error {
 	p := n.EffectivePolicy()
-	maxSeconds := 180
-	if n.Executor == "codex" {
-		maxSeconds = 1800
-	}
-	if p.Retries < 0 || p.Retries > 2 || p.TimeoutSeconds < 1 || p.TimeoutSeconds > maxSeconds || p.ToolCalls < 0 || p.ToolCalls > 10 {
-		return fmt.Errorf("节点 %s 策略越界：重试 0–2 次，超时 1–%d 秒，工具 0–10 次", n.ID, maxSeconds)
+	if p.Retries < 0 || p.Retries > 2 {
+		return fmt.Errorf("节点 %s 策略越界：重试 0–2 次", n.ID)
 	}
 	return nil
 }

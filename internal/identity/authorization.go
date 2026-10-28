@@ -19,7 +19,11 @@ func Authorize(ctx context.Context, actor Actor, project, action, owner string) 
 	if actor.ID == "" || actor.Namespace == "" {
 		return ErrUnauthenticated
 	}
-	if actor.TokenID != "" && (actor.ProjectID != project || !slices.Contains(actor.Scopes, action)) {
+	scope := action
+	if project == "" && action == "read_catalog" {
+		scope = "read"
+	}
+	if actor.TokenID != "" && ((project != "" && actor.ProjectID != project) || !slices.Contains(actor.Scopes, scope)) {
 		return ErrForbidden
 	}
 	conn, err := database.Open(ctx)
@@ -38,13 +42,10 @@ func Authorize(ctx context.Context, actor Actor, project, action, owner string) 
 		return ErrForbidden
 	}
 	if project == "" {
-		if actor.TokenID != "" {
-			return ErrForbidden
-		}
-		if action == "read_templates" {
+		if action == "read_catalog" {
 			return nil
 		}
-		if action == "admin" && admin || action == "manage_templates" && (admin || exists) {
+		if actor.TokenID == "" && (action == "admin" && admin || action == "manage_catalog" && (admin || exists)) {
 			return nil
 		}
 		return ErrForbidden
@@ -71,7 +72,7 @@ func permits(role, action, owner, user string) bool {
 		return true
 	case "run", "configure", "schedule":
 		return role != "viewer"
-	case "manage_run", "manage_schedule":
+	case "manage_run", "manage_schedule", "manage_factory":
 		return role == "manager" || role == "operator" && owner == user
 	case "manage_connections", "manage_members":
 		return role == "manager"

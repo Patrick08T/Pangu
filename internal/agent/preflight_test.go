@@ -27,3 +27,19 @@ func TestPreflightChecksOnlyRequestedExecutors(t *testing.T) {
 		t.Fatal("检查缓存了程序路径")
 	}
 }
+
+func TestPreflightRejectsUnknownCodexModelEvenAfterDefaultNode(t *testing.T) {
+	setupCodex(t)
+	d := workflow.Definition{Nodes: []workflow.Node{{ID: "default", Executor: "codex", Instruction: "任务"}, {ID: "invalid", Executor: "codex", Model: "GPT-6-Astra xhigh", Instruction: "任务"}}}
+	if Preflight(context.Background(), d).Ready {
+		t.Fatal("同执行器去重漏检错误模型，直到付费调用才失败")
+	}
+	d.Nodes[1].Model = "not-in-catalog"
+	if Preflight(context.Background(), d).Ready {
+		t.Fatal("未知模型通过预检")
+	}
+	d.Nodes[1].Model = "bridge"
+	if !Preflight(context.Background(), d).Ready {
+		t.Fatal("有效模型被拒绝")
+	}
+}

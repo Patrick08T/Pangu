@@ -1,6 +1,7 @@
 package identity
 
 import (
+	"log/slog"
 	"net/http"
 	"strings"
 )
@@ -37,7 +38,7 @@ func (s Service) callback(w http.ResponseWriter, r *http.Request, cfg Config) {
 		}
 	}
 	setCookie(w, cfg, "pangu_login", "", -1)
-	verifier, err := consumeLogin(r.Context(), s.Namespace, cfg, q.Get("state"), cookies[0].Value)
+	err := consumeLogin(r.Context(), s.Namespace, cfg, q.Get("state"), cookies[0].Value)
 	if err != nil {
 		authFailure(w, err)
 		return
@@ -46,8 +47,9 @@ func (s Service) callback(w http.ResponseWriter, r *http.Request, cfg Config) {
 		authFailure(w, ErrUnauthenticated)
 		return
 	}
-	external, err := exchange(r.Context(), feishuClient(), cfg, q.Get("code"), verifier)
+	external, err := exchange(r.Context(), feishuClient(), cfg, q.Get("code"))
 	if err != nil {
+		slog.ErrorContext(r.Context(), "飞书身份交换失败", "error", err)
 		authFailure(w, err)
 		return
 	}

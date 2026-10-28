@@ -43,3 +43,19 @@ func FindRerun(ctx context.Context, namespace, project, key, source string) (*Re
 	}
 	return item, nil
 }
+
+func FindFork(ctx context.Context, namespace, project, key, source, requestHash string) (*Record, error) {
+	conn, err := database.Open(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close(context.Background())
+	item, _, err := scan(conn.QueryRow(ctx, "SELECT "+columns+" FROM pangu.submissions WHERE namespace=$1 AND project_id=$2 AND operation='fork' AND key_hash=$3", namespace, project, digest([]byte(key))))
+	if err != nil {
+		return nil, err
+	}
+	if item.CreatedBy != identity.Current(ctx).ID || item.Snapshot.SourceRunID != source || item.Snapshot.Fork == nil || item.Snapshot.Fork.RequestHash != requestHash {
+		return nil, ErrConflict
+	}
+	return item, nil
+}

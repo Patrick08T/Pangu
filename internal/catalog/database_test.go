@@ -36,7 +36,7 @@ func catalogDatabase(t *testing.T) (string, string, string) {
 
 func templateVersion(t *testing.T, namespace string) (*Object, *Version) {
 	t.Helper()
-	item, err := Create(context.Background(), namespace, NewObject{Kind: "template", Name: "跨项目模板", Spec: Spec{Agent: &workflow.Node{ID: "agent", Executor: "codex", Instruction: "检查项目"}}})
+	item, err := Create(context.Background(), namespace, NewObject{Kind: "agent", Name: "跨项目模板", Spec: Spec{Agent: &workflow.Node{ID: "agent", Executor: "codex", Handoff: testHandoff(), Instruction: "检查项目"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,44 +47,41 @@ func templateVersion(t *testing.T, namespace string) (*Object, *Version) {
 	return item, version
 }
 
-func TestSharedTemplateBindingIsFixedAndPublishedVersionsAreImmutable(t *testing.T) {
+func TestSharedVersionRunsInTwoProjectsWithoutCopying(t *testing.T) {
 	ns, first, second := catalogDatabase(t)
 	ctx := context.Background()
-	template, version := templateVersion(t, ns)
-	a, err := Bind(ctx, ns, version.ID, first, "项目一", "")
+	item, version := templateVersion(t, ns)
+	for _, project := range []string{first, second} {
+		d, err := Compile(ctx, ns, version.ID, project, "任务")
+		if err != nil || d.ProjectID != project || d.Nodes[0].AgentVersion != version.ID {
+			t.Fatal("共享版本执行上下文错误", err)
+		}
+	}
+	item.Spec.Agent.Instruction = "新版指令"
+	updated, err := Save(ctx, ns, item.ID, item.Revision, item.Name, item.Spec)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := Bind(ctx, ns, version.ID, second, "项目二", "")
-	if err != nil || a.ID == b.ID || a.ProjectID != first || b.ProjectID != second {
-		t.Fatalf("绑定错误: %+v %v", b, err)
-	}
-	template.Spec.Agent.Instruction = "新版指令"
-	updated, err := Save(ctx, ns, template.ID, template.Revision, template.Name, template.Spec)
-	if err != nil {
+	if _, err = Publish(ctx, ns, item.ID, updated.Revision); err != nil {
 		t.Fatal(err)
 	}
-	newVersion, err := Publish(ctx, ns, template.ID, updated.Revision)
-	if err != nil || newVersion.ID == version.ID {
-		t.Fatalf("发布: %+v %v", newVersion, err)
+	stored, err := ReadVersion(ctx, ns, version.ID)
+	if err != nil || stored.Spec.Agent.Instruction != "检查项目" {
+		t.Fatal("旧版本被修改", err)
 	}
-	stored, err := Get(ctx, ns, a.ID)
-	if err != nil || stored.Spec.Agent.Instruction != "检查项目" || stored.Spec.TemplateVersion != version.ID {
-		t.Fatalf("绑定被自动升级: %+v %v", stored, err)
-	}
-	if _, err := Get(ctx, "foreign", a.ID); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("跨命名空间读取: %v", err)
+	if _, err = Get(ctx, "foreign", item.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatal("跨工作空间读取", err)
 	}
 	conn, err := database.Open(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer conn.Close(ctx)
-	if _, err := conn.Exec(ctx, "UPDATE pangu.catalog_objects SET project_id=$1 WHERE id=$2", second, a.ID); err == nil {
-		t.Fatal("数据库接受项目迁移")
-	}
-	if _, err := conn.Exec(ctx, "UPDATE pangu.catalog_versions SET spec='{}' WHERE id=$1", version.ID); err == nil {
+	if _, err = conn.Exec(ctx, "UPDATE pangu.catalog_versions SET spec='{}' WHERE id=$1", version.ID); err == nil {
 		t.Fatal("发布版本可变")
+	}
+	if _, err = Compile(ctx, ns, version.ID, "", "任务"); err == nil {
+		t.Fatal("未指定项目仍能运行")
 	}
 }
 
@@ -115,8 +112,8 @@ func TestCatalogRevisionConflictAndArchiveProtectHistory(t *testing.T) {
 	if err := Archive(ctx, ns, item.ID, true); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Bind(ctx, ns, version.ID, project, "拒绝绑定", ""); err == nil {
-		t.Fatal("归档模板仍能新建绑定")
+	if _, err := Compile(ctx, ns, version.ID, project, "任务"); err == nil {
+		t.Fatal("归档角色仍能启动新运行")
 	}
 	old, err := ReadVersion(ctx, ns, version.ID)
 	if err != nil || old.Spec.Agent.Instruction != "检查项目" {

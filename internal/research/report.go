@@ -1,6 +1,7 @@
 package research
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -13,6 +14,7 @@ import (
 )
 
 type reportArgs struct {
+	Claims    []Claim  `json:"claims"`
 	Title     string   `json:"title"`
 	Markdown  string   `json:"markdown"`
 	SourceIDs []string `json:"source_ids"`
@@ -42,8 +44,13 @@ func (s *Session) register(a reportArgs) (string, error) {
 		return "", errors.New("报告标题、大小或敏感信息校验失败")
 	}
 	for _, section := range sections(s.input.Node.Mode) {
-		if !strings.Contains("\n"+a.Markdown+"\n", "\n## "+section+"\n") {
+		_, body, found := strings.Cut("\n"+a.Markdown+"\n", "\n## "+section+"\n")
+		if !found {
 			return "", fmt.Errorf("报告缺少二级标题：%s", section)
+		}
+		body, _, _ = strings.Cut(body, "\n## ")
+		if strings.TrimSpace(body) == "" {
+			return "", fmt.Errorf("报告章节不能为空：%s", section)
 		}
 	}
 	if strings.Contains(strings.ToLower(a.Markdown), "http:") || strings.Contains(strings.ToLower(a.Markdown), "https:") || strings.Contains(a.Markdown, "](") || strings.Contains(a.Markdown, "<") || strings.Contains(a.Markdown, "![") || regexp.MustCompile(`\]\s*:`).MatchString(a.Markdown) {
@@ -76,15 +83,32 @@ func (s *Session) register(a reportArgs) (string, error) {
 			return "", errors.New("正文引用未包含在来源清单")
 		}
 	}
-	if s.input.Node.Mode == "research" && len(known) == 1 && known["input"] {
-		return "", errors.New("调研至少需要一个实际读取的外部或项目来源")
+	return s.finishReport(a, appendix)
+}
+
+func (s *Session) finishReport(a reportArgs, appendix string) (string, error) {
+	claims, err := s.claims(a.Claims, a.SourceIDs)
+	if err != nil {
+		return "", err
 	}
+	if err := s.checkEvidence(a); err != nil {
+		return "", err
+	}
+	appendix = claims + appendix
 	// 引用只作为文本展示，转义全部括号，阻止引用定义/图片在其他 Markdown 阅读器中激活。
 	body := strings.NewReplacer("\\", "\\\\", "[", "\\[", "]", "\\]").Replace(a.Markdown)
 	if len(body)+len(appendix) > 1024*1024 {
 		return "", errors.New("生成后的报告超过 1 MiB")
 	}
-	s.report = &workflow.Report{ID: uuid.NewString(), Title: a.Title, Markdown: body + appendix}
+	structured := StructuredReport{Mode: s.input.Node.Mode, Tasks: a.Tasks, Claims: a.Claims, Sources: []Source{}}
+	for _, id := range a.SourceIDs {
+		structured.Sources = append(structured.Sources, s.sources[id])
+	}
+	metadata, err := json.Marshal(structured)
+	if err != nil || len(metadata) > 256*1024 {
+		return "", errors.New("报告结构化数据超过 256 KiB")
+	}
+	s.report = &workflow.Report{ID: uuid.NewString(), Title: a.Title, Markdown: body + appendix, Metadata: metadata}
 	return "报告已生成，待节点成功后原子保存。产物 ID：" + s.report.ID, nil
 }
 

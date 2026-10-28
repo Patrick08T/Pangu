@@ -15,7 +15,7 @@ import (
 	"github.com/Patrick08T/Pangu/web"
 )
 
-const validRun = `{"project_id":"eb1d38c7-d454-4bc7-a337-827b76a5e6c8","input":"主题","nodes":[{"id":"writer","executor":"eino","model":"test","instruction":"撰写"}]}`
+const validRun = `{"project_id":"eb1d38c7-d454-4bc7-a337-827b76a5e6c8","input":"主题","nodes":[{"id":"writer","executor":"eino","model":"test","instruction":"撰写","handoff":{"objective":"完成任务","inputs":"本次输入","deliverables":"报告","acceptance":"说明证据","failure_handling":"报告缺口"}}]}`
 const testID = "eb1d38c7-d454-4bc7-a337-827b76a5e6c8"
 
 type fakeBackend struct {
@@ -44,6 +44,11 @@ func (b *fakeBackend) GetRequest(context.Context, string) (*submission.Record, e
 }
 
 func (b *fakeBackend) Rerun(context.Context, string, string) (*submission.Record, error) {
+	b.calls++
+	return &submission.Record{ID: testID}, b.err
+}
+
+func (b *fakeBackend) Fork(context.Context, string, string, workflow.ForkInput) (*submission.Record, error) {
 	b.calls++
 	return &submission.Record{ID: testID}, b.err
 }

@@ -170,9 +170,9 @@ func TestHatchetNodeRetry(t *testing.T) {
 	m, backend, h := integrationSetup(t)
 	project := registerTestProject(t, backend)
 	d := workflow.Definition{ProjectID: project.ID, Input: "integration", Nodes: []workflow.Node{
-		{Executor: "eino", ID: "source", Model: "source", Instruction: "source"},
-		{Executor: "eino", ID: "flaky", Model: "flaky", Instruction: "flaky", DependsOn: []string{"source"}},
-		{Executor: "eino", ID: "final", Model: "final", Instruction: "final", DependsOn: []string{"flaky"}},
+		{Executor: "eino", ID: "source", Model: "source", Handoff: testHandoff(), Instruction: "source"},
+		{Executor: "eino", ID: "flaky", Model: "flaky", Handoff: testHandoff(), Instruction: "flaky", DependsOn: []string{"source"}},
+		{Executor: "eino", ID: "final", Model: "final", Handoff: testHandoff(), Instruction: "final", DependsOn: []string{"flaky"}},
 	}}
 	var accepted struct {
 		RunID string `json:"run_id"`
@@ -197,7 +197,7 @@ func TestHatchetCron(t *testing.T) {
 	m, backend, h := integrationSetup(t)
 	project := registerTestProject(t, backend)
 	c := workflow.Cron{Name: fmt.Sprintf("integration-%d", time.Now().UnixNano()), Expression: "* * * * *", Workflow: workflow.Definition{
-		ProjectID: project.ID, Input: "cron", Nodes: []workflow.Node{{Executor: "eino", ID: "cron", Model: "cron", Instruction: "cron"}},
+		ProjectID: project.ID, Input: "cron", Nodes: []workflow.Node{{Executor: "eino", ID: "cron", Model: "cron", Handoff: testHandoff(), Instruction: "cron"}},
 	}}
 	var created schedule.Plan
 	request(t, h, "POST", "/crons", c, 201, &created)
@@ -230,9 +230,9 @@ func TestHatchetWorkerRecovery(t *testing.T) {
 	first := startProcess(t)
 	awaitWorker(t, backend)
 	d := workflow.Definition{ProjectID: project.ID, Input: "restart", Nodes: []workflow.Node{
-		{Executor: "eino", ID: "source", Model: "source", Instruction: "source"},
-		{Executor: "eino", ID: "recover", Model: "recover", Instruction: "recover", DependsOn: []string{"source"}},
-		{Executor: "eino", ID: "final", Model: "final", Instruction: "final", DependsOn: []string{"recover"}},
+		{Executor: "eino", ID: "source", Model: "source", Handoff: testHandoff(), Instruction: "source"},
+		{Executor: "eino", ID: "recover", Model: "recover", Handoff: testHandoff(), Instruction: "recover", DependsOn: []string{"source"}},
+		{Executor: "eino", ID: "final", Model: "final", Handoff: testHandoff(), Instruction: "final", DependsOn: []string{"recover"}},
 	}}
 	var accepted struct {
 		RunID string `json:"run_id"`
@@ -296,7 +296,7 @@ func TestHatchetWideLargeInput(t *testing.T) {
 	project := registerTestProject(t, backend)
 	d := workflow.Definition{ProjectID: project.ID, Input: strings.Repeat("x", 200*1024)}
 	for i := 0; i < 32; i++ {
-		d.Nodes = append(d.Nodes, workflow.Node{Executor: "eino", ID: fmt.Sprintf("node%d", i), Model: "wide", Instruction: "test"})
+		d.Nodes = append(d.Nodes, workflow.Node{Executor: "eino", ID: fmt.Sprintf("node%d", i), Model: "wide", Handoff: testHandoff(), Instruction: "test"})
 	}
 	var accepted struct {
 		RunID string `json:"run_id"`
@@ -307,7 +307,7 @@ func TestHatchetWideLargeInput(t *testing.T) {
 		t.Fatalf("nodes=%d calls=%d", len(out.Nodes), m.count("wide"))
 	}
 	firstID := accepted.RunID
-	d = workflow.Definition{ProjectID: project.ID, Input: "later", Nodes: []workflow.Node{{Executor: "eino", ID: "later", Model: "later", Instruction: "later"}}}
+	d = workflow.Definition{ProjectID: project.ID, Input: "later", Nodes: []workflow.Node{{Executor: "eino", ID: "later", Model: "later", Handoff: testHandoff(), Instruction: "later"}}}
 	request(t, h, "POST", "/runs", d, 202, &accepted)
 	_ = waitRun(t, h, accepted.RunID)
 	request(t, h, "GET", "/runs/"+firstID, nil, 200, &out)
@@ -326,6 +326,6 @@ func TestHatchetRejectBeforeRegistration(t *testing.T) {
 	backend := scheduler.NewBackend(client)
 	project := registerTestProject(t, backend)
 	h := api.New(backend, integrationAccess{})
-	d := workflow.Definition{ProjectID: project.ID, Input: "unregistered", Nodes: []workflow.Node{{Executor: "eino", ID: "test", Model: "test", Instruction: "test"}}}
+	d := workflow.Definition{ProjectID: project.ID, Input: "unregistered", Nodes: []workflow.Node{{Executor: "eino", ID: "test", Model: "test", Handoff: testHandoff(), Instruction: "test"}}}
 	request(t, h, "POST", "/runs", d, 503, nil)
 }

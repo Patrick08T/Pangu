@@ -54,10 +54,10 @@ func TestHatchetCodexScheduling(t *testing.T) {
 	project := registerTestProject(t, backend)
 	h := api.New(backend, integrationAccess{})
 	d := workflow.Definition{ProjectID: project.ID, Input: "mixed", Nodes: []workflow.Node{
-		{ID: "source", Executor: "eino", Model: "source", Instruction: "source"},
-		{ID: "codeA", Executor: "codex", Instruction: "code", DependsOn: []string{"source"}},
-		{ID: "codeB", Executor: "codex", Instruction: "code", DependsOn: []string{"source"}},
-		{ID: "final", Executor: "eino", Model: "final", Instruction: "final", DependsOn: []string{"codeA", "codeB"}},
+		{ID: "source", Executor: "eino", Model: "source", Handoff: testHandoff(), Instruction: "source"},
+		{ID: "codeA", Executor: "codex", Handoff: testHandoff(), Instruction: "code", DependsOn: []string{"source"}},
+		{ID: "codeB", Executor: "codex", Handoff: testHandoff(), Instruction: "code", DependsOn: []string{"source"}},
+		{ID: "final", Executor: "eino", Model: "final", Handoff: testHandoff(), Instruction: "final", DependsOn: []string{"codeA", "codeB"}},
 	}}
 	var accepted struct {
 		RunID string `json:"run_id"`
@@ -103,7 +103,7 @@ func assertCodexQueueTimeout(t *testing.T, client *hatchet.Client, id string) {
 		t.Fatal("Codex 排队超时未设置")
 	}
 	duration, err := time.ParseDuration(*value)
-	if err != nil || duration != 6*time.Hour {
+	if err != nil || duration != time.Duration(1<<63-1)/time.Second*time.Second {
 		t.Fatalf("排队超时错误: %v %q", err, *value)
 	}
 }

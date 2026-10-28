@@ -2,10 +2,868 @@ openapi: 3.0.3
 info:
   title: Pangu 本地 API
   version: 0.1.0
-  description: Pangu Agent 工厂 API。飞书会话或项目 API Token 认证；仅 healthz 与飞书授权入口公开。配置权限与会话每次查询原始数据库。
+  description: Pangu Agent 工厂 API。业务接口使用飞书会话或项目 API Token；GitHub 接收入口独立验证 HMAC 签名。人工审批、采纳和证据核验要求飞书会话。配置权限与会话每次查询原始数据库。
 servers:
   - url: /api
 paths:
+  /factory/sessions:
+    get:
+      operationId: listFactorySessions
+      parameters:
+        - {name: project_id, in: query, required: true, schema: {type: string, format: uuid}}
+        - {name: offset, in: query, schema: {type: integer, minimum: 0}}
+      responses:
+        '200':
+          description: 当前项目的工厂对话
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/FactorySessionPage'}
+        '403': {$ref: '#/components/responses/Error'}
+    post:
+      operationId: createFactorySession
+      parameters:
+        - {name: X-CSRF-Token, in: header, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [project_id]
+              properties:
+                project_id: {type: string, format: uuid}
+      responses:
+        '201':
+          description: 已创建空对话，不调用模型
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/FactorySession'}
+        '403': {$ref: '#/components/responses/Error'}
+  /factory/sessions/{id}:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+    get:
+      operationId: getFactorySession
+      responses:
+        '200':
+          description: 对话、候选与创建回执；同步已完成生成结果
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/FactorySession'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+  /factory/sessions/{id}/messages:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+    post:
+      operationId: generateFactoryProposal
+      parameters:
+        - {name: X-CSRF-Token, in: header, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/FactoryInput'}
+      responses:
+        '202':
+          description: 单次受限生成任务已保存，消息 ID 用于幂等重试
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Submission'}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+  /factory/sessions/{id}/apply:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+    post:
+      operationId: applyFactoryProposal
+      parameters:
+        - {name: X-CSRF-Token, in: header, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [turn_id, revision]
+              properties:
+                turn_id: {type: string, format: uuid}
+                revision: {type: integer, minimum: 1}
+      responses:
+        '200':
+          description: 原子创建并发布回执，不运行；同一候选重复请求返回原回执
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/FactoryResult'}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+  /runs/{id}/fork:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+    post:
+      operationId: forkRun
+      parameters:
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+        - {name: X-CSRF-Token, in: header, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ForkInput'}
+      responses:
+        '202':
+          description: 基于成功串行 Codex 前缀的独立返工运行
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Submission'}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '502': {$ref: '#/components/responses/Error'}
+  /runs/{id}/fork/preview:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+    post:
+      operationId: previewFork
+      parameters:
+        - {name: X-CSRF-Token, in: header, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ForkInput'}
+      responses:
+        '200':
+          description: 复用与重新执行的影响范围；最终提交还会检查源工作区
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ForkPreview'}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '410': {$ref: '#/components/responses/Error'}
+        '502': {$ref: '#/components/responses/Error'}
+  /runs/{id}/inputs:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+    get:
+      operationId: runInputs
+      responses:
+        '200':
+          description: 根据当前已成功上游输出解析参数和分支；未就绪字段不猜测
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/InputPreview'}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '410': {$ref: '#/components/responses/Error'}
+        '502': {$ref: '#/components/responses/Error'}
+  /workflows/preview:
+    post:
+      operationId: previewInputs
+      parameters:
+        - {name: X-CSRF-Token, in: header, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Workflow'}
+      responses:
+        '200':
+          description: 不调用 Agent 的输入预览与错误定位
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/InputPreview'}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '502': {$ref: '#/components/responses/Error'}
+  /github/hooks:
+    get:
+      operationId: listGithubHooks
+      parameters:
+        - {name: project_id, in: query, required: true, schema: {type: string, format: uuid}}
+        - {name: offset, in: query, schema: {type: integer, minimum: 0}}
+      responses:
+        '200':
+          description: 项目管理者可见的事件入口
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/GithubHookPage'}
+        '403': {$ref: '#/components/responses/Error'}
+        '502': {$ref: '#/components/responses/Error'}
+    post:
+      operationId: createGithubHook
+      parameters:
+        - {name: X-CSRF-Token, in: header, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/GithubHookConfig'}
+      responses:
+        '201':
+          description: 固定配置的已启用入口；变更请停用后新建
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/GithubHook'}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '502': {$ref: '#/components/responses/Error'}
+  /github/hooks/{id}:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+    delete:
+      operationId: disableGithubHook
+      parameters:
+        - {name: X-CSRF-Token, in: header, schema: {type: string}}
+      responses:
+        '204': {description: 已停用，已接受的提交继续执行}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '502': {$ref: '#/components/responses/Error'}
+  /github/hooks/{id}/events:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+    get:
+      operationId: githubEvents
+      parameters:
+        - {name: offset, in: query, schema: {type: integer, minimum: 0}}
+      responses:
+        '200':
+          description: 事件与回执追踪
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/GithubEventPage'}
+        '403': {$ref: '#/components/responses/Error'}
+        '502': {$ref: '#/components/responses/Error'}
+  /hooks/github/{id}:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+    post:
+      operationId: receiveGithubIssue
+      security: []
+      description: 独立 HMAC-SHA256 认证，仅接收固定仓库与标签的 issues labeled 事件；原始体最多 256 KiB，Issue 正文最多 12000 字节。
+      parameters:
+        - {name: X-Hub-Signature-256, in: header, required: true, schema: {type: string}}
+        - {name: X-GitHub-Delivery, in: header, required: true, schema: {type: string, format: uuid}}
+        - {name: X-GitHub-Event, in: header, required: true, schema: {type: string, enum: [issues]}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object, additionalProperties: true}
+      responses:
+        '202':
+          description: 已在同一事务中记录事件与提交意图，可查询回执
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Submission'}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '413': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+  /runs/{id}/usage:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+    get:
+      operationId: runUsage
+      parameters:
+        - {name: offset, in: query, schema: {type: integer, minimum: 0}}
+      responses:
+        '200':
+          description: 原子预留额度及提供方返回的用量；金额只作估算，无账单实值
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/UsageReport'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '502': {$ref: '#/components/responses/Error'}
+  /runs/{id}/reports/{report}/deliveries:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+      - {name: report, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: createDelivery
+      description: 从已成功的设计报告固定选中任务与实施/只读审查版本；不会自动批准或执行。
+      parameters:
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+        - {name: X-CSRF-Token, in: header, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DeliveryInput'}
+      responses:
+        '201':
+          description: 固定交付草案
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Delivery'}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '502': {$ref: '#/components/responses/Error'}
+  /deliveries:
+    get:
+      operationId: listDeliveries
+      parameters:
+        - {name: project_id, in: query, required: true, schema: {type: string, format: uuid}}
+        - {name: offset, in: query, schema: {type: integer, minimum: 0}}
+      responses:
+        '200':
+          description: 交付草案列表
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DeliveryPage'}
+        '403': {$ref: '#/components/responses/Error'}
+        '502': {$ref: '#/components/responses/Error'}
+  /deliveries/{id}:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+    get:
+      operationId: getDelivery
+      responses:
+        '200':
+          description: 交付草案与运行回执
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Delivery'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '502': {$ref: '#/components/responses/Error'}
+  /deliveries/{id}/run:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+    post:
+      operationId: runDelivery
+      description: 每份草案只产生一个幂等运行，实施节点仍需飞书人工批准。
+      parameters:
+        - {name: X-CSRF-Token, in: header, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subject_hash]
+              properties:
+                subject_hash: {type: string}
+      responses:
+        '202':
+          description: 交付运行回执
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Submission'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '410': {$ref: '#/components/responses/Error'}
+        '502': {$ref: '#/components/responses/Error'}
+  /deliveries/{id}/artifacts.zip:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+    get:
+      operationId: exportDelivery
+      responses:
+        '200':
+          description: 已验证、审查并由人采纳的交付 ZIP
+          content:
+            application/zip:
+              schema: {type: string, format: binary}
+        '403': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '410': {$ref: '#/components/responses/Error'}
+        '502': {$ref: '#/components/responses/Error'}
+  /runs/{id}/reports:
+    parameters:
+      -
+        "$ref": "#/components/parameters/ID"
+    get:
+      operationId: "listReports"
+      responses:
+        200:
+          description: "报告证据及人工核验"
+          content:
+            application/json:
+              schema:
+                type: "array"
+                items:
+                  "$ref": "#/components/schemas/ReportDetail"
+        400:
+          "$ref": "#/components/responses/Error"
+        401:
+          "$ref": "#/components/responses/Error"
+        403:
+          "$ref": "#/components/responses/Error"
+        404:
+          "$ref": "#/components/responses/Error"
+        409:
+          "$ref": "#/components/responses/Error"
+        502:
+          "$ref": "#/components/responses/Error"
+  /runs/{id}/reports/{report}/claims/{claim}:
+    parameters:
+      -
+        "$ref": "#/components/parameters/ID"
+      -
+        name: "report"
+        in: "path"
+        required: true
+        schema:
+          type: "string"
+          format: "uuid"
+      -
+        name: "claim"
+        in: "path"
+        required: true
+        schema:
+          type: "string"
+    put:
+      operationId: "reviewClaim"
+      parameters:
+        -
+          name: "X-CSRF-Token"
+          in: "header"
+          schema:
+            type: "string"
+      description: "运行所有者或管理者按报告摘要与修订号登记人工核验；核验记录随报告正文清理。"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/ClaimReviewInput"
+      responses:
+        200:
+          description: "报告证据及人工核验"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ClaimReview"
+        400:
+          "$ref": "#/components/responses/Error"
+        401:
+          "$ref": "#/components/responses/Error"
+        403:
+          "$ref": "#/components/responses/Error"
+        404:
+          "$ref": "#/components/responses/Error"
+        409:
+          "$ref": "#/components/responses/Error"
+        502:
+          "$ref": "#/components/responses/Error"
+  /runs/{id}/approvals:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listApprovals
+      responses:
+        '200':
+          description: 运行中的节点审批，最多 32 项；正文随运行清理
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/ApprovalGate'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '502': {$ref: '#/components/responses/Error'}
+  /approvals/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    put:
+      operationId: decideApproval
+      description: 飞书会话中的运行所有者或管理者批准/驳回；开始执行前可以撤回批准。API Token 不可代替人工审批。
+      parameters:
+        - {name: X-CSRF-Token, in: header, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ApprovalDecision'}
+      responses:
+        '200':
+          description: 决策已持久化，事件交接会重试；执行前重新检查权限、有效期与 Git 检查点
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ApprovalGate'}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '410': {$ref: '#/components/responses/Error'}
+        '502': {$ref: '#/components/responses/Error'}
+  /runs/{id}/feedback:
+    parameters:
+      -
+        "$ref": "#/components/parameters/ID"
+    get:
+      operationId: "getFeedback"
+      responses:
+        200:
+          description: "获取当前终态运行及产物摘要；运行中的 subject_hash 为空。"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/FeedbackState"
+        400:
+          "$ref": "#/components/responses/Error"
+        401:
+          "$ref": "#/components/responses/Error"
+        403:
+          "$ref": "#/components/responses/Error"
+        404:
+          "$ref": "#/components/responses/Error"
+        409:
+          "$ref": "#/components/responses/Error"
+        410:
+          "$ref": "#/components/responses/Error"
+        502:
+          "$ref": "#/components/responses/Error"
+    put:
+      operationId: "saveFeedback"
+      parameters:
+        -
+          name: "X-CSRF-Token"
+          in: "header"
+          schema:
+            type: "string"
+          description: "浏览器修改请求同时需要正确 Origin；API Token 无此要求。"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/FeedbackInput"
+      responses:
+        200:
+          description: "管理者或运行所有者按修订号保存采纳评价；相同重复请求返回原评价。"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Feedback"
+        400:
+          "$ref": "#/components/responses/Error"
+        401:
+          "$ref": "#/components/responses/Error"
+        403:
+          "$ref": "#/components/responses/Error"
+        404:
+          "$ref": "#/components/responses/Error"
+        409:
+          "$ref": "#/components/responses/Error"
+        410:
+          "$ref": "#/components/responses/Error"
+        502:
+          "$ref": "#/components/responses/Error"
+  /projects/{id}/quality:
+    parameters:
+      -
+        "$ref": "#/components/parameters/ID"
+    get:
+      operationId: "projectQuality"
+      responses:
+        200:
+          description: "最近 90 天按稳定任务 ID 去重；采纳取任务最新已评定运行，首次采纳仅计算原始运行首次评价。"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Quality"
+        400:
+          "$ref": "#/components/responses/Error"
+        401:
+          "$ref": "#/components/responses/Error"
+        403:
+          "$ref": "#/components/responses/Error"
+        404:
+          "$ref": "#/components/responses/Error"
+        409:
+          "$ref": "#/components/responses/Error"
+        410:
+          "$ref": "#/components/responses/Error"
+        502:
+          "$ref": "#/components/responses/Error"
+  /evaluations/cases:
+    get:
+      operationId: "listEvaluationCases"
+      parameters:
+        -
+          name: "project_id"
+          in: "query"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+        -
+          name: "offset"
+          in: "query"
+          schema:
+            type: "integer"
+            minimum: 0
+            default: 0
+      responses:
+        200:
+          description: "固定样本列表，过期或停用正文为空。"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/EvaluationCasePage"
+        400:
+          "$ref": "#/components/responses/Error"
+        401:
+          "$ref": "#/components/responses/Error"
+        403:
+          "$ref": "#/components/responses/Error"
+        404:
+          "$ref": "#/components/responses/Error"
+        409:
+          "$ref": "#/components/responses/Error"
+        410:
+          "$ref": "#/components/responses/Error"
+        502:
+          "$ref": "#/components/responses/Error"
+    post:
+      operationId: "createEvaluationCase"
+      parameters:
+        -
+          name: "X-CSRF-Token"
+          in: "header"
+          schema:
+            type: "string"
+          description: "浏览器修改请求同时需要正确 Origin；API Token 无此要求。"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/EvaluationCaseInput"
+      responses:
+        201:
+          description: "创建固定样本，正文保留 30 天；变更标准必须创建新样本。"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/EvaluationCase"
+        400:
+          "$ref": "#/components/responses/Error"
+        401:
+          "$ref": "#/components/responses/Error"
+        403:
+          "$ref": "#/components/responses/Error"
+        404:
+          "$ref": "#/components/responses/Error"
+        409:
+          "$ref": "#/components/responses/Error"
+        410:
+          "$ref": "#/components/responses/Error"
+        502:
+          "$ref": "#/components/responses/Error"
+  /evaluations/cases/{id}:
+    parameters:
+      -
+        "$ref": "#/components/parameters/ID"
+    get:
+      operationId: "getEvaluationCase"
+      responses:
+        200:
+          description: "固定样本"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/EvaluationCase"
+        400:
+          "$ref": "#/components/responses/Error"
+        401:
+          "$ref": "#/components/responses/Error"
+        403:
+          "$ref": "#/components/responses/Error"
+        404:
+          "$ref": "#/components/responses/Error"
+        409:
+          "$ref": "#/components/responses/Error"
+        410:
+          "$ref": "#/components/responses/Error"
+        502:
+          "$ref": "#/components/responses/Error"
+    delete:
+      operationId: "retireEvaluationCase"
+      parameters:
+        -
+          name: "X-CSRF-Token"
+          in: "header"
+          schema:
+            type: "string"
+          description: "浏览器修改请求同时需要正确 Origin；API Token 无此要求。"
+      responses:
+        204:
+          description: "停用样本并立即清除正文。"
+        400:
+          "$ref": "#/components/responses/Error"
+        401:
+          "$ref": "#/components/responses/Error"
+        403:
+          "$ref": "#/components/responses/Error"
+        404:
+          "$ref": "#/components/responses/Error"
+        409:
+          "$ref": "#/components/responses/Error"
+        410:
+          "$ref": "#/components/responses/Error"
+        502:
+          "$ref": "#/components/responses/Error"
+  /evaluations/cases/{id}/runs:
+    parameters:
+      -
+        "$ref": "#/components/parameters/ID"
+    get:
+      operationId: "listEvaluationRuns"
+      parameters:
+        -
+          name: "offset"
+          in: "query"
+          schema:
+            type: "integer"
+            minimum: 0
+            default: 0
+      responses:
+        200:
+          description: "同一固定样本在多个发布版本的运行与人工采纳结果。"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/EvaluationRunPage"
+        400:
+          "$ref": "#/components/responses/Error"
+        401:
+          "$ref": "#/components/responses/Error"
+        403:
+          "$ref": "#/components/responses/Error"
+        404:
+          "$ref": "#/components/responses/Error"
+        409:
+          "$ref": "#/components/responses/Error"
+        410:
+          "$ref": "#/components/responses/Error"
+        502:
+          "$ref": "#/components/responses/Error"
+    post:
+      operationId: "runEvaluation"
+      parameters:
+        -
+          name: "X-CSRF-Token"
+          in: "header"
+          schema:
+            type: "string"
+          description: "浏览器修改请求同时需要正确 Origin；API Token 无此要求。"
+        -
+          "$ref": "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: "object"
+              required:
+                - "version_id"
+              properties:
+                version_id:
+                  type: "string"
+                  format: "uuid"
+      responses:
+        202:
+          description: "使用样本固定输入及指定发布版本运行。保留原请求键重试。"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Submission"
+        400:
+          "$ref": "#/components/responses/Error"
+        401:
+          "$ref": "#/components/responses/Error"
+        403:
+          "$ref": "#/components/responses/Error"
+        404:
+          "$ref": "#/components/responses/Error"
+        409:
+          "$ref": "#/components/responses/Error"
+        410:
+          "$ref": "#/components/responses/Error"
+        502:
+          "$ref": "#/components/responses/Error"
+
+  /runnables:
+    get:
+      operationId: runnableChoices
+      description: 读取工作空间未归档的角色和工作流，每个对象只返回最新已发布版本。
+      parameters:
+        - {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
+      responses:
+        '200':
+          description: 可运行助手，每页最多 100 项
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunnableChoicePage'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+  /models/codex:
+    get:
+      operationId: codexModelChoices
+      description: 已登录用户读取 Worker 当前 Codex 程序的内置可显示模型目录；每次重新读取，不使用模型缓存、不调用收费模型。账号可用性由实际提供方决定。
+      responses:
+        '200':
+          description: 按目录优先级排序的模型候选
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelChoicePage'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+  /connections/choices:
+    get:
+      operationId: connectionChoices
+      description: 已登录用户选择共享模型版本；不返回端点或凭据引用。
+      parameters:
+        - {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
+      responses:
+        '200':
+          description: 可绑定连接版本，每页最多 100 项
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectionChoicePage'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
   /projects:
     get:
       operationId: listProjects
@@ -780,10 +1638,6 @@ paths:
           in: query
           schema:
             type: string
-        - name: project_id
-          in: query
-          schema:
-            type: string
         - name: offset
           in: query
           schema:
@@ -921,6 +1775,77 @@ paths:
                 - revision
                 - name
                 - spec
+  /catalog/{id}/draft/preflight:
+    post:
+      operationId: preflightAgentDraft
+      description: 检查已保存的 Agent 修订和 Worker，不调用收费模型。
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: X-CSRF-Token, in: header, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AgentTrialInput'}
+      responses:
+        '200':
+          description: 环境检查结果
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Preflight'}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Preflight'}
+  /catalog/{id}/trials:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: listAgentTrials
+      parameters:
+        - name: project_id
+          in: query
+          required: true
+          schema: {type: string, format: uuid}
+        - {name: offset, in: query, schema: {type: integer, minimum: 0}}
+      responses:
+        '200':
+          description: 该角色在指定项目的试运行回执，按创建时间倒序；正文遵循运行保留期限。
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AgentTrialPage'}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+    post:
+      operationId: runAgentDraft
+      description: 原子保存已存在草稿修订的执行快照和试运行来源，复用提交恢复机制；不创建发布版本。Idempotency-Key 使用 Unix 毫秒时间戳.UUID；超过 89 天或超前服务器 5 分钟的键被拒绝，清理记录后也不重发旧请求。
+      parameters:
+        - {name: X-CSRF-Token, in: header, schema: {type: string}}
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 128}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AgentTrialInput'}
+      responses:
+        '202':
+          description: 已保存试运行意图；即使尚未派发也可查询回执。
+          headers:
+            Location: {schema: {type: string}, description: 回执查询地址}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Submission'}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '410': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
   /catalog/{id}/publish:
     post:
       operationId: publishCatalog
@@ -1075,59 +2000,7 @@ paths:
           $ref: '#/components/responses/Error'
         '502':
           $ref: '#/components/responses/Error'
-  /versions/{id}/bind:
-    post:
-      operationId: bindCatalog
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: X-CSRF-Token
-          in: header
-          description: 浏览器会话修改操作必填，取自 /auth/me；同时必须提供与 PANGU_PUBLIC_URL 完全一致的 Origin。API Token 无此要求。
-          schema:
-            type: string
-      responses:
-        '201':
-          description: 操作结果
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CatalogObject'
-        '400':
-          $ref: '#/components/responses/Error'
-        '401':
-          $ref: '#/components/responses/Error'
-        '403':
-          $ref: '#/components/responses/Error'
-        '404':
-          $ref: '#/components/responses/Error'
-        '409':
-          $ref: '#/components/responses/Error'
-        '502':
-          $ref: '#/components/responses/Error'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              properties:
-                project_id:
-                  type: string
-                  format: uuid
-                name:
-                  type: string
-                connection_version:
-                  type: string
-                  format: uuid
-              required:
-                - project_id
-                - name
+
   /versions/{id}/run:
     post:
       operationId: runVersion
@@ -1176,9 +2049,10 @@ paths:
               type: object
               additionalProperties: false
               properties:
+                project_id: {type: string, format: uuid}
                 input:
                   type: string
-              required: []
+              required: [project_id]
   /runs/{id}/rerun:
     post:
       operationId: rerun
@@ -1704,7 +2578,7 @@ paths:
   /versions/{id}/preflight:
     post:
       operationId: preflightVersion
-      description: 项目 Agent、流程或模型连接的 Worker 诊断；不调用收费模型，连接诊断仅管理者可用。
+      description: 使用指定项目的 Worker 检查共享 Agent、工作流或模型连接；不调用收费模型。
       parameters:
         - name: id
           in: path
@@ -1724,9 +2598,11 @@ paths:
               type: object
               additionalProperties: false
               properties:
+                project_id: {type: string, format: uuid}
                 input:
                   type: string
               required:
+                - project_id
                 - input
       responses:
         '200':
@@ -1871,6 +2747,113 @@ paths:
           $ref: '#/components/responses/Error'
         '502':
           $ref: '#/components/responses/Error'
+  /runs/{id}/activity:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+    get:
+      operationId: runActivity
+      description: 每个活动节点最近开始且尚未结束的操作。仅包含未结束的实际尝试，按节点返回至多一条；不受 trace 分页影响，并行操作的全部记录可按节点查询 trace。复用运行读取权限及正文保留期。
+      responses:
+        '200':
+          description: 脱敏后的当前操作，没有活动时为空数组
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/TraceEvent'}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '410': {$ref: '#/components/responses/Error'}
+        '502': {$ref: '#/components/responses/Error'}
+  /runs/{id}/trace:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+    get:
+      operationId: runTrace
+      description: 分页读取实际行为，每条事件关联运行、节点、尝试及父 span；正文在写入前脱敏和截断，不记录内部思维链。
+      parameters:
+        - {name: after, in: query, schema: {type: integer, format: int64, minimum: 0}}
+        - {name: before, in: query, schema: {type: integer, format: int64, minimum: 0}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+        - {name: node, in: query, schema: {type: string, maxLength: 128}}
+        - {name: kind, in: query, schema: {type: string, enum: [node, model, tool]}}
+        - {name: status, in: query, schema: {type: string, enum: [running, succeeded, failed, cancelled]}}
+      responses:
+        '200':
+          description: 脱敏后的追踪事件
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TracePage'}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '410': {$ref: '#/components/responses/Error'}
+        '502': {$ref: '#/components/responses/Error'}
+  /runs/{id}/trace.ndjson:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+    get:
+      operationId: exportTrace
+      description: 导出当前筛选下的全部追踪事件，按序号倒序；开始后新增事件不纳入。文件末尾 export_error 表示导出中断。
+      parameters:
+        - {name: after, in: query, schema: {type: integer, format: int64, minimum: 0}}
+        - {name: before, in: query, schema: {type: integer, format: int64, minimum: 0}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+        - {name: node, in: query, schema: {type: string, maxLength: 128}}
+        - {name: kind, in: query, schema: {type: string, enum: [node, model, tool]}}
+        - {name: status, in: query, schema: {type: string, enum: [running, succeeded, failed, cancelled]}}
+      responses:
+        '200':
+          description: 脱敏后的追踪事件
+          content:
+            application/x-ndjson:
+              schema: {type: string}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '410': {$ref: '#/components/responses/Error'}
+        '502': {$ref: '#/components/responses/Error'}
+  /runs/{id}/debug:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+    get:
+      operationId: runDebug
+      responses:
+        '200':
+          description: 持久调试状态和活动节点数
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DebugState'}
+        '403': {$ref: '#/components/responses/Error'}
+        '410': {$ref: '#/components/responses/Error'}
+    post:
+      operationId: controlDebug
+      description: 需要 manage_run 权限；暂停阻止后续节点开始，已执行的节点继续。单步放行一个节点尝试（失败重试也重新等待许可）。状态版本不符或仍有活动节点时返回 409。
+      parameters:
+        - {name: X-CSRF-Token, in: header, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [action, revision]
+              properties:
+                action: {type: string, enum: [pause, resume, step]}
+                revision: {type: integer, minimum: 0}
+      responses:
+        '200':
+          description: 操作后的调试状态
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DebugState'}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '502': {$ref: '#/components/responses/Error'}
 components:
   parameters:
     IdempotencyKey:
@@ -1917,15 +2900,876 @@ components:
           schema:
             $ref: '#/components/schemas/Readiness'
   schemas:
+    DebugState:
+      type: object
+      required: [paused, step_requested, step_node, revision, active]
+      properties:
+        paused: {type: boolean}
+        step_requested: {type: boolean}
+        step_node: {type: string}
+        revision: {type: integer}
+        active: {type: integer}
+    TracePage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: {$ref: '#/components/schemas/TraceEvent'}
+        next_before: {type: integer, format: int64}
+    TraceEvent:
+      type: object
+      required: [id, run_id, node_id, node_run_id, attempt, span_id, parent_span_id, kind, phase, name, time, duration_ms, status, input, output, error, truncated]
+      properties:
+        id: {type: integer, format: int64}
+        run_id: {type: string, format: uuid}
+        node_id: {type: string}
+        node_run_id: {type: string, format: uuid}
+        attempt: {type: integer}
+        span_id: {type: string}
+        parent_span_id: {type: string}
+        kind: {type: string, enum: [node, model, tool]}
+        phase: {type: string, enum: [start, end]}
+        name: {type: string}
+        time: {type: string, format: date-time}
+        duration_ms: {type: integer, format: int64}
+        status: {type: string, enum: [running, succeeded, failed, cancelled]}
+        input: {type: string}
+        output: {type: string}
+        error: {type: string}
+        truncated: {type: boolean}
+    FactoryInput:
+      type: object
+      additionalProperties: false
+      required: [id, revision, message, mode, connection_version]
+      properties:
+        id: {type: string, format: uuid}
+        revision: {type: integer, minimum: 1}
+        message: {type: string, minLength: 1, maxLength: 8000}
+        mode: {type: string, enum: [build, modify, diagnose, optimize]}
+        connection_version: {type: string, format: uuid}
+        target_id: {type: string, format: uuid}
+        target_revision: {type: integer, minimum: 1}
+        source_run_id: {type: string, format: uuid}
+    FactoryAgent:
+      type: object
+      additionalProperties: false
+      required: [key, name]
+      properties:
+        key: {type: string, pattern: '^[a-z][a-z0-9_-]{0,63}$'}
+        name: {type: string}
+        object_id: {type: string, format: uuid}
+        revision: {type: integer, minimum: 1}
+        version_id: {type: string, format: uuid}
+        node: {$ref: '#/components/schemas/Node'}
+    FactoryStep:
+      type: object
+      additionalProperties: false
+      required: [id, agent]
+      properties:
+        id: {type: string}
+        agent: {type: string}
+        depends_on: {type: array, items: {type: string}}
+        bindings: {type: object, additionalProperties: {$ref: '#/components/schemas/FieldBinding'}}
+        when: {$ref: '#/components/schemas/Condition'}
+        approval: {$ref: '#/components/schemas/ApprovalPolicy'}
+    FactoryProposal:
+      type: object
+      additionalProperties: false
+      required: [name, agents]
+      properties:
+        name: {type: string}
+        agents: {type: array, minItems: 1, maxItems: 12, items: {$ref: '#/components/schemas/FactoryAgent'}}
+        steps: {type: array, maxItems: 32, items: {$ref: '#/components/schemas/FactoryStep'}}
+        object_id: {type: string, format: uuid}
+        revision: {type: integer, minimum: 1}
+        parameters: {$ref: '#/components/schemas/Shape'}
+        budget: {$ref: '#/components/schemas/Budget'}
+    FactoryReply:
+      type: object
+      required: [message]
+      properties:
+        message: {type: string}
+        proposal: {$ref: '#/components/schemas/FactoryProposal'}
+    FactoryResult:
+      type: object
+      required: [agents]
+      properties:
+        agents: {type: array, items: {$ref: '#/components/schemas/CatalogVersion'}}
+        workflow: {$ref: '#/components/schemas/CatalogVersion'}
+    FactoryTurn:
+      type: object
+      required: [id, input, skill_digest, status, created_at]
+      properties:
+        id: {type: string, format: uuid}
+        request_id: {type: string, format: uuid}
+        input: {$ref: '#/components/schemas/FactoryInput'}
+        skill_digest: {type: string}
+        status: {type: string, enum: [pending, ready, failed, applied, expired]}
+        reply: {$ref: '#/components/schemas/FactoryReply'}
+        error: {type: string}
+        result: {$ref: '#/components/schemas/FactoryResult'}
+        created_at: {type: string, format: date-time}
+    FactorySession:
+      type: object
+      required: [id, project_id, title, revision, updated_at, turns]
+      properties:
+        id: {type: string, format: uuid}
+        project_id: {type: string, format: uuid}
+        created_by: {type: string}
+        title: {type: string}
+        revision: {type: integer}
+        updated_at: {type: string, format: date-time}
+        turns: {type: array, items: {$ref: '#/components/schemas/FactoryTurn'}}
+    FactorySessionPage:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/FactorySession'}}
+        next_offset: {type: integer}
+    Condition:
+      type: object
+      additionalProperties: false
+      required: [field, equals]
+      properties:
+        field: {$ref: '#/components/schemas/FieldBinding'}
+        equals:
+          oneOf:
+            - {type: boolean}
+            - {type: string, maxLength: 1024}
+    InputPreview:
+      type: object
+      required: [node_id, state, parameters, error]
+      properties:
+        node_id: {type: string}
+        state: {type: string, enum: [ready, pending, skipped, invalid]}
+        parameters: {type: object, additionalProperties: true}
+        error: {type: string}
+    ForkInput:
+      type: object
+      additionalProperties: false
+      required: [checkpoint_node, workflow]
+      properties:
+        checkpoint_node: {type: string}
+        workflow: {$ref: '#/components/schemas/Workflow'}
+    ForkPreview:
+      type: object
+      required: [reused_nodes, execute_nodes, input_changed]
+      properties:
+        reused_nodes: {type: array, items: {type: string}}
+        execute_nodes: {type: array, items: {type: string}}
+        input_changed: {type: boolean}
+    Fork:
+      type: object
+      required: [request_hash, checkpoint_node, commit, origin_commit]
+      properties:
+        request_hash: {type: string}
+        checkpoint_node: {type: string}
+        commit: {type: string}
+        origin_commit: {type: string}
+        checkpoints: {type: object, additionalProperties: {type: string}}
+        reused:
+          type: object
+          additionalProperties:
+            type: object
+            required: [text, run_id]
+            properties:
+              text: {type: string}
+              run_id: {type: string}
+              data: {type: object, additionalProperties: true}
+    GithubHookConfig:
+      type: object
+      additionalProperties: false
+      required: [project_id, version_id, repository, label, secret_ref, enabled]
+      properties:
+        project_id: {type: string, format: uuid}
+        version_id: {type: string, format: uuid}
+        repository: {type: string, example: owner/repo}
+        label: {type: string, maxLength: 64}
+        secret_ref: {type: string, pattern: '^PANGU_HOOK_SECRET_[A-Z][A-Z0-9_]{0,63}$'}
+        enabled: {type: boolean}
+    GithubHook:
+      type: object
+      required: [id, actor_id, project_id, version_id, repository, label, secret_ref, enabled, created_at]
+      properties:
+        id: {type: string, format: uuid}
+        actor_id: {type: string, format: uuid}
+        project_id: {type: string, format: uuid}
+        version_id: {type: string, format: uuid}
+        repository: {type: string}
+        label: {type: string}
+        secret_ref: {type: string}
+        enabled: {type: boolean}
+        created_at: {type: string, format: date-time}
+    GithubHookPage:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/GithubHook'}}
+        next_offset: {type: integer}
+    GithubEventPage:
+      type: object
+      required: [items]
+      properties:
+        next_offset: {type: integer}
+        items:
+          type: array
+          items:
+            type: object
+            required: [delivery_id, request_id, run_id, created_at]
+            properties:
+              delivery_id: {type: string, format: uuid}
+              request_id: {type: string, format: uuid}
+              run_id: {type: string}
+              created_at: {type: string, format: date-time}
+    Budget:
+      type: object
+      additionalProperties: false
+      required: [model_calls, search_calls, codex_sessions]
+      properties:
+        model_calls: {type: integer, minimum: 0, maximum: 4096}
+        search_calls: {type: integer, minimum: 0, maximum: 4096}
+        codex_sessions: {type: integer, minimum: 0, maximum: 4096}
+    Price:
+      type: object
+      additionalProperties: false
+      required: [currency, input_per_million_micros, output_per_million_micros]
+      properties:
+        currency: {type: string, enum: [USD, CNY]}
+        input_per_million_micros: {type: integer, minimum: 0, maximum: 1000000000}
+        output_per_million_micros: {type: integer, minimum: 0, maximum: 1000000000}
+    UsageCall:
+      type: object
+      required: [id, node_id, node_run_id, attempt, kind, model, price, status, input_tokens, output_tokens, cached_tokens, estimate_micros, created_at, finished_at]
+      properties:
+        id: {type: string, format: uuid}
+        node_id: {type: string}
+        node_run_id: {type: string, format: uuid}
+        attempt: {type: integer}
+        kind: {type: string, enum: [model, search, codex]}
+        model: {type: string}
+        status: {type: string, enum: [unknown, completed, reported]}
+        price:
+          nullable: true
+          allOf:
+            - {$ref: '#/components/schemas/Price'}
+        input_tokens: {type: integer, nullable: true}
+        output_tokens: {type: integer, nullable: true}
+        cached_tokens: {type: integer, nullable: true}
+        estimate_micros: {type: integer, nullable: true}
+        created_at: {type: string, format: date-time}
+        finished_at: {type: string, format: date-time, nullable: true}
+    UsageReport:
+      type: object
+      required: [budget, used, calls]
+      properties:
+        budget:
+          type: object
+          nullable: true
+          description: 未主动设置调用预算时为 null，不施加平台默认上限。
+          allOf:
+            - {$ref: '#/components/schemas/Budget'}
+        used: {$ref: '#/components/schemas/Budget'}
+        calls: {type: array, items: {$ref: '#/components/schemas/UsageCall'}}
+        next_offset: {type: integer}
+    DeliveryInput:
+      type: object
+      required: [subject_hash, task_ids, implementation_version, review_version]
+      properties:
+        subject_hash: {type: string}
+        task_ids: {type: array, minItems: 1, maxItems: 32, items: {type: string}}
+        implementation_version: {type: string, format: uuid}
+        review_version: {type: string, format: uuid}
+    Delivery:
+      type: object
+      required: [id, project_id, actor_id, source_run_id, report_id, report_hash, subject_hash, definition, request_id, created_at, expires_at]
+      properties:
+        id: {type: string, format: uuid}
+        project_id: {type: string, format: uuid}
+        actor_id: {type: string, format: uuid}
+        source_run_id: {type: string, format: uuid}
+        report_id: {type: string, format: uuid}
+        report_hash: {type: string}
+        subject_hash: {type: string}
+        definition:
+          nullable: true
+          allOf:
+            - {$ref: '#/components/schemas/Workflow'}
+        request_id: {type: string}
+        created_at: {type: string, format: date-time}
+        expires_at: {type: string, format: date-time}
+    DeliveryPage:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/Delivery'}}
+        next_offset: {type: integer}
+    ReportEvidence:
+      type: "object"
+      required:
+        - "source_id"
+        - "quote"
+        - "source_date"
+      properties:
+        source_id:
+          type: "string"
+        quote:
+          type: "string"
+          maxLength: 1024
+        source_date:
+          type: "string"
+          description: "模型标注的资料日期 YYYY-MM-DD 或 unknown，尚需人工确认。"
+    ReportClaim:
+      type: "object"
+      required:
+        - "id"
+        - "statement"
+        - "kind"
+        - "scope"
+        - "uncertainty"
+        - "conflicts"
+        - "evidence"
+      properties:
+        id:
+          type: "string"
+        statement:
+          type: "string"
+        kind:
+          type: "string"
+          enum:
+            - "fact"
+            - "inference"
+            - "unknown"
+        scope:
+          type: "string"
+        uncertainty:
+          type: "string"
+        conflicts:
+          type: "array"
+          items:
+            type: "string"
+          nullable: true
+        evidence:
+          type: "array"
+          items:
+            "$ref": "#/components/schemas/ReportEvidence"
+          nullable: true
+    ReportSource:
+      type: "object"
+      required:
+        - "id"
+        - "title"
+        - "read"
+      properties:
+        id:
+          type: "string"
+        title:
+          type: "string"
+        read:
+          type: "boolean"
+        url:
+          type: "string"
+        retrieved_at:
+          type: "string"
+          format: "date-time"
+        sha256:
+          type: "string"
+        artifact_id:
+          type: "string"
+    DesignTask:
+      type: "object"
+      required:
+        - "id"
+        - "title"
+        - "scope"
+        - "depends_on"
+        - "deliverable"
+        - "acceptance"
+      properties:
+        id:
+          type: "string"
+        title:
+          type: "string"
+        scope:
+          type: "string"
+        depends_on:
+          type: "array"
+          items:
+            type: "string"
+          nullable: true
+        deliverable:
+          type: "string"
+        acceptance:
+          type: "string"
+    StructuredReport:
+      type: "object"
+      required:
+        - "mode"
+        - "tasks"
+        - "claims"
+        - "sources"
+      properties:
+        mode:
+          type: "string"
+        tasks:
+          type: "array"
+          items:
+            "$ref": "#/components/schemas/DesignTask"
+          nullable: true
+        claims:
+          type: "array"
+          items:
+            "$ref": "#/components/schemas/ReportClaim"
+          nullable: true
+        sources:
+          type: "array"
+          items:
+            "$ref": "#/components/schemas/ReportSource"
+          nullable: true
+    ClaimReviewInput:
+      type: "object"
+      required:
+        - "revision"
+        - "subject_hash"
+        - "verdict"
+        - "reason"
+      properties:
+        revision:
+          type: "integer"
+          minimum: 0
+        subject_hash:
+          type: "string"
+          pattern: "^[0-9a-f]{64}$"
+        verdict:
+          type: "string"
+          enum:
+            - "supported"
+            - "partial"
+            - "unsupported"
+            - "outdated"
+        reason:
+          type: "string"
+          minLength: 1
+          maxLength: 2048
+    ClaimReview:
+      allOf:
+        -
+          "$ref": "#/components/schemas/ClaimReviewInput"
+        -
+          type: "object"
+          required:
+            - "claim_id"
+            - "actor_id"
+            - "updated_at"
+            - "source"
+          properties:
+            source: {type: string, enum: [unknown, feishu_session]}
+            claim_id:
+              type: "string"
+            actor_id:
+              type: "string"
+              format: "uuid"
+            updated_at:
+              type: "string"
+              format: "date-time"
+    ReportDetail:
+      type: "object"
+      required:
+        - "id"
+        - "title"
+        - "subject_hash"
+        - "data"
+        - "reviews"
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+        title:
+          type: "string"
+        subject_hash:
+          type: "string"
+        data:
+          allOf:
+            -
+              "$ref": "#/components/schemas/StructuredReport"
+          nullable: true
+        reviews:
+          type: "array"
+          items:
+            "$ref": "#/components/schemas/ClaimReview"
+    ApprovalPolicy:
+      type: object
+      additionalProperties: false
+      required: [timeout_seconds]
+      properties:
+        timeout_seconds: {type: integer, minimum: 1, maximum: 3600, description: '节点之前独立的人工审批等待期限。'}
+    ApprovalDecision:
+      type: object
+      additionalProperties: false
+      required: [subject_hash, decision, reason]
+      properties:
+        subject_hash: {type: string, pattern: '^[0-9a-f]{64}$'}
+        decision: {type: string, enum: [approved, rejected, revoked]}
+        reason: {type: string, minLength: 1, maxLength: 2048}
+    ApprovalGate:
+      type: object
+      required: [id, project_id, run_id, node_id, owner_id, subject_hash, subject, head_commit, status, actor_id, reason, created_at, expires_at, decided_at, consumed_at]
+      properties:
+        id: {type: string, format: uuid}
+        project_id: {type: string, format: uuid}
+        run_id: {type: string, format: uuid}
+        node_id: {type: string}
+        owner_id: {type: string}
+        subject_hash: {type: string}
+        subject: {type: object, nullable: true, additionalProperties: true}
+        head_commit: {type: string}
+        status: {type: string, enum: [waiting, approved, rejected, revoked, consumed, expired]}
+        actor_id: {type: string}
+        reason: {type: string}
+        created_at: {type: string, format: date-time}
+        expires_at: {type: string, format: date-time}
+        decided_at: {type: string, format: date-time, nullable: true}
+        consumed_at: {type: string, format: date-time, nullable: true}
+    FeedbackInput:
+      type: "object"
+      required:
+        - "revision"
+        - "subject_hash"
+        - "decision"
+        - "reason"
+      properties:
+        revision:
+          type: "integer"
+          minimum: 0
+        subject_hash:
+          type: "string"
+          pattern: "^[0-9a-fA-F]{64}$"
+        decision:
+          type: "string"
+          enum:
+            - "accepted"
+            - "needs_changes"
+            - "rejected"
+        reason:
+          type: "string"
+          minLength: 1
+          maxLength: 2048
+    Feedback:
+      allOf:
+        -
+          "$ref": "#/components/schemas/FeedbackInput"
+        -
+          type: "object"
+          required:
+            - "id"
+            - "run_id"
+            - "task_id"
+            - "actor_id"
+            - "first_decision"
+            - "source"
+            - "payload_expired"
+            - "created_at"
+            - "updated_at"
+          properties:
+            id:
+              type: "string"
+              format: "uuid"
+            run_id:
+              type: "string"
+              format: "uuid"
+            task_id:
+              type: "string"
+              format: "uuid"
+            actor_id:
+              type: "string"
+              format: "uuid"
+            first_decision:
+              type: "string"
+              enum:
+                - "accepted"
+                - "needs_changes"
+                - "rejected"
+            source:
+              type: string
+              enum: [unknown, feishu_session]
+            payload_expired:
+              type: "boolean"
+            created_at:
+              type: "string"
+              format: "date-time"
+            updated_at:
+              type: "string"
+              format: "date-time"
+    FeedbackState:
+      type: "object"
+      required:
+        - "subject_hash"
+        - "can_accept"
+        - "feedback"
+      properties:
+        subject_hash:
+          type: "string"
+        can_accept:
+          type: "boolean"
+        feedback:
+          allOf:
+            - $ref: '#/components/schemas/Feedback'
+          nullable: true
+    Quality:
+      type: "object"
+      required:
+        - "tasks"
+        - "runs"
+        - "first_reviewed"
+        - "first_accepted"
+        - "reviewed_tasks"
+        - "accepted_tasks"
+        - "needs_changes"
+        - "rejected_tasks"
+        - "unreviewed_tasks"
+      properties:
+        tasks:
+          type: "integer"
+          minimum: 0
+        runs:
+          type: "integer"
+          minimum: 0
+        first_reviewed:
+          type: "integer"
+          minimum: 0
+        first_accepted:
+          type: "integer"
+          minimum: 0
+        reviewed_tasks:
+          type: "integer"
+          minimum: 0
+        accepted_tasks:
+          type: "integer"
+          minimum: 0
+        needs_changes:
+          type: "integer"
+          minimum: 0
+        rejected_tasks:
+          type: "integer"
+          minimum: 0
+        unreviewed_tasks:
+          type: "integer"
+          minimum: 0
+    EvaluationCaseInput:
+      type: "object"
+      required:
+        - "project_id"
+        - "name"
+        - "input"
+        - "expected"
+        - "criteria"
+        - "retain_input"
+      properties:
+        project_id:
+          type: "string"
+          format: "uuid"
+        name:
+          type: "string"
+          minLength: 1
+          maxLength: 128
+        input:
+          type: "string"
+          maxLength: 16384
+        expected:
+          type: "string"
+          minLength: 1
+          maxLength: 8192
+        criteria:
+          type: "array"
+          minItems: 1
+          maxItems: 20
+          items:
+            type: "string"
+            minLength: 1
+            maxLength: 1024
+        retain_input:
+          type: "boolean"
+          enum:
+            - true
+          description: "明确同意将输入、预期和标准保留 30 天；到期清除正文，元数据最多 90 天。"
+    EvaluationCase:
+      type: "object"
+      required:
+        - "id"
+        - "project_id"
+        - "actor_id"
+        - "name"
+        - "input"
+        - "expected"
+        - "criteria"
+        - "payload_expired"
+        - "created_at"
+        - "expires_at"
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+        project_id:
+          type: "string"
+          format: "uuid"
+        actor_id:
+          type: "string"
+          format: "uuid"
+        name:
+          type: "string"
+        input:
+          type: "string"
+        expected:
+          type: "string"
+        criteria:
+          type: "array"
+          items:
+            type: "string"
+        payload_expired:
+          type: "boolean"
+        created_at:
+          type: "string"
+          format: "date-time"
+        expires_at:
+          type: "string"
+          format: "date-time"
+    EvaluationRun:
+      type: "object"
+      required:
+        - "case_id"
+        - "version_id"
+        - "request_id"
+        - "run_id"
+        - "decision"
+        - "created_at"
+      properties:
+        case_id:
+          type: "string"
+          format: "uuid"
+        version_id:
+          type: "string"
+          format: "uuid"
+        request_id:
+          type: "string"
+          format: "uuid"
+        run_id:
+          type: "string"
+        decision:
+          type: "string"
+          enum:
+            - ""
+            - "accepted"
+            - "needs_changes"
+            - "rejected"
+        created_at:
+          type: "string"
+          format: "date-time"
+    EvaluationCasePage:
+      type: "object"
+      required:
+        - "items"
+      properties:
+        items:
+          type: "array"
+          items:
+            "$ref": "#/components/schemas/EvaluationCase"
+        next_offset:
+          type: "integer"
+          minimum: 0
+    EvaluationRunPage:
+      type: "object"
+      required:
+        - "items"
+      properties:
+        items:
+          type: "array"
+          items:
+            "$ref": "#/components/schemas/EvaluationRun"
+        next_offset:
+          type: "integer"
+          minimum: 0
+    RunnableChoicePage:
+      type: object
+      required: [items]
+      properties:
+        next_offset: {type: integer, minimum: 0}
+        items:
+          type: array
+          items:
+            type: object
+            required: [name, version]
+            properties:
+              name: {type: string}
+              version: {$ref: '#/components/schemas/CatalogVersion'}
+    ModelChoicePage:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 512
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, name]
+            properties:
+              id: {type: string, minLength: 1, maxLength: 128}
+              name: {type: string, minLength: 1, maxLength: 256}
+    ConnectionChoicePage:
+      type: object
+      required: [items]
+      properties:
+        next_offset: {type: integer, minimum: 0}
+        items:
+          type: array
+          items:
+            type: object
+            required: [id, name, number, model]
+            properties:
+              id: {type: string, format: uuid}
+              name: {type: string}
+              number: {type: integer}
+              model: {type: string}
+    AgentTrialInput:
+      type: object
+      additionalProperties: false
+      required: [project_id, revision, input]
+      properties:
+        project_id: {type: string, format: uuid}
+        revision: {type: integer, minimum: 1}
+        input: {type: string, maxLength: 16384}
+    AgentTrial:
+      type: object
+      required: [request_id, revision, created_at, status]
+      properties:
+        request_id: {type: string, format: uuid}
+        run_id: {type: string, format: uuid}
+        revision: {type: integer, minimum: 1}
+        created_by: {type: string, format: uuid}
+        created_at: {type: string, format: date-time}
+        status: {type: string, enum: [pending, accepted]}
+    AgentTrialPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: {$ref: '#/components/schemas/AgentTrial'}
+        next_offset: {type: integer, minimum: 0}
     Submission:
       type: object
       required:
+        - task_id
         - request_id
         - project_id
         - operation
         - status
         - created_at
       properties:
+        task_id:
+          type: string
+          format: uuid
         request_id:
           type: string
           format: uuid
@@ -2008,7 +3852,6 @@ components:
           enum:
             - pending
             - accepted
-            - skipped
         reason:
           type: string
         request_id:
@@ -2242,6 +4085,9 @@ components:
         - status
         - created_at
       properties:
+        title:
+          type: string
+          description: 从任务输入提取的简短标题；过期后不再返回。
         id:
           type: string
           format: uuid
@@ -2254,6 +4100,7 @@ components:
             - succeeded
             - failed
             - cancelled
+            - skipped
             - unknown
         created_at:
           type: string
@@ -2294,6 +4141,7 @@ components:
             - executor
             - attempt
           properties:
+            reused_from: {type: string, format: uuid}
             node_id:
               type: string
             task_id:
@@ -2303,7 +4151,8 @@ components:
               type: string
             attempt:
               type: integer
-              minimum: 1
+              minimum: 0
+              description: 真实执行尝试从1开始，跳过或复用检查点为0，任务ID为派生显示标识
             output:
               type: string
             error:
@@ -2348,6 +4197,7 @@ components:
             - stop_confirmed
             - logs_expired
           properties:
+            fork: {$ref: '#/components/schemas/Fork'}
             nodes:
               type: array
               items:
@@ -2468,6 +4318,7 @@ components:
       required:
         - nodes
       properties:
+        budget: {$ref: '#/components/schemas/Budget'}
         project_id:
           type: string
           format: uuid
@@ -2493,6 +4344,10 @@ components:
         - executor
         - instruction
       properties:
+        handoff:
+          $ref: '#/components/schemas/HandoffContract'
+        when: {$ref: '#/components/schemas/Condition'}
+        approval: {$ref: '#/components/schemas/ApprovalPolicy'}
         id:
           type: string
           pattern: ^[a-zA-Z][a-zA-Z0-9_-]{0,63}$
@@ -2510,7 +4365,9 @@ components:
           description: 最多 1 KiB
         model:
           type: string
-          description: Eino 必填；提供时非空且最多 128 字节
+          pattern: ^$|\S
+          maxLength: 128
+          description: 无模型连接的 Eino 必填；有连接时须与连接模型一致，Codex 账号连接可留空使用默认模型。
         depends_on:
           type: array
           uniqueItems: true
@@ -2545,21 +4402,31 @@ components:
           type: boolean
           description: 仅 Codex：设置原生 read-only 沙箱；写入变更不能发布检查点。
       oneOf:
-        - required:
-            - model
-          properties:
+        - properties:
             executor:
               type: string
               enum:
                 - eino
-            model:
-              type: string
-              pattern: \S
+          anyOf:
+            - required: [connection_version]
+            - required: [model]
+              properties:
+                model: {type: string, pattern: '\S'}
         - properties:
             executor:
               type: string
               enum:
                 - codex
+    HandoffContract:
+      type: object
+      additionalProperties: false
+      description: 交接契约。草稿允许缺项或留空；发布、试运行及新任务提交时五项均须为非空白文本，每项最多 4096 UTF-8 字节。状态、权限和预算由既有运行配置控制，契约描述不授予额外权限。
+      properties:
+        objective: {type: string, maxLength: 4096, description: 任务目标与职责边界}
+        inputs: {type: string, maxLength: 4096, description: 必需输入与上下文}
+        deliverables: {type: string, maxLength: 4096, description: 交付物及其格式}
+        acceptance: {type: string, maxLength: 4096, description: 可核验的验收标准}
+        failure_handling: {type: string, maxLength: 4096, description: 缺失资料与失败时如何处理}
     Shape:
       type: object
       additionalProperties: false
@@ -2606,23 +4473,42 @@ components:
       type: object
       additionalProperties: false
       properties:
+        provider:
+          type: string
+          enum: [openai, codex]
+        price: {$ref: '#/components/schemas/Price'}
         base_url:
           type: string
           format: uri
         model:
           type: string
+          maxLength: 128
         secret_ref:
           type: string
           pattern: ^PANGU_SECRET_[A-Z][A-Z0-9_]{0,63}$
-      required:
-        - base_url
-        - model
-        - secret_ref
-      description: 仅保存服务端凭据变量名；版本/API 不包含密钥，执行时读取原始来源。
+      oneOf:
+        - properties:
+            provider: {enum: [openai]}
+            model: {minLength: 1}
+          required: [base_url, model, secret_ref]
+        - properties:
+            provider: {enum: [codex]}
+          required: [provider]
+          not:
+            anyOf:
+              - required: [base_url]
+              - required: [secret_ref]
+              - required: [price]
+      description: openai 使用服务端凭据引用；codex 使用 Worker 专用登录且模型可留空，禁止配置 API 端点、凭据引用与单价。执行时读取原始来源，不返回密钥。
     FlowBinding:
       type: object
       additionalProperties: false
       properties:
+        task: {type: string, description: 本步骤任务，追加到角色指令；最多 8192 字节，合并后指令最多 16384 字节}
+        read_only: {type: boolean, description: 仅可收紧为只读，不能解除助手已有的只读权限}
+        output_schema: {$ref: '#/components/schemas/Shape'}
+        when: {$ref: '#/components/schemas/Condition'}
+        approval: {$ref: '#/components/schemas/ApprovalPolicy'}
         id:
           type: string
         agent_version:
@@ -2639,10 +4525,35 @@ components:
       required:
         - id
         - agent_version
+    FlowEditor:
+      type: object
+      additionalProperties: false
+      properties:
+        nodes:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: false
+            properties:
+              name: {type: string, description: 节点显示名称，最多 128 字节}
+              x: {type: number, minimum: -1000000, maximum: 1000000}
+              y: {type: number, minimum: -1000000, maximum: 1000000}
+            required: [x, y]
+        viewport:
+          type: object
+          additionalProperties: false
+          properties:
+            x: {type: number, minimum: -1000000, maximum: 1000000}
+            y: {type: number, minimum: -1000000, maximum: 1000000}
+            zoom: {type: number, minimum: 0.1, maximum: 2}
+          required: [x, y, zoom]
+      description: 仅用于画布展示，与草稿及发布版本一起保存，执行编译忽略。
     Flow:
       type: object
       additionalProperties: false
       properties:
+        editor: {$ref: '#/components/schemas/FlowEditor'}
+        budget: {$ref: '#/components/schemas/Budget'}
         parameters:
           $ref: '#/components/schemas/Shape'
         nodes:
@@ -2657,9 +4568,6 @@ components:
       properties:
         agent:
           $ref: '#/components/schemas/Node'
-        template_version:
-          type: string
-          format: uuid
         flow:
           $ref: '#/components/schemas/Flow'
         connection:
@@ -2672,13 +4580,9 @@ components:
         kind:
           type: string
           enum:
-            - template
             - agent
             - workflow
             - connection
-        project_id:
-          type: string
-          format: uuid
         name:
           type: string
         spec:
@@ -2694,13 +4598,9 @@ components:
         kind:
           type: string
           enum:
-            - template
             - agent
             - workflow
             - connection
-        project_id:
-          type: string
-          format: uuid
         name:
           type: string
         spec:
@@ -2735,9 +4635,6 @@ components:
           format: uuid
         kind:
           type: string
-        project_id:
-          type: string
-          format: uuid
         number:
           type: integer
         source_revision:
@@ -2762,23 +4659,9 @@ components:
       type: object
       additionalProperties: false
       properties:
-        retries:
-          type: integer
-          minimum: 0
-          maximum: 2
-        timeout_seconds:
-          type: integer
-          minimum: 1
-          maximum: 1800
-        tool_calls:
-          type: integer
-          minimum: 0
-          maximum: 10
-      required:
-        - retries
-        - timeout_seconds
-        - tool_calls
-      description: Eino 超时上限 180 秒，Codex 1800 秒；工具上限由 Eino 受控工具执行，原生 Codex 工具次数边界仍在验证。缺省重试 2 次，工具 10 次。
+        retries: {type: integer, minimum: 0, maximum: 2}
+      required: [retries]
+      description: 只控制失败重试，缺省 2 次；不设置工具次数或执行时限。
     CatalogDocument:
       type: object
       additionalProperties: false
@@ -2790,13 +4673,9 @@ components:
         kind:
           type: string
           enum:
-            - template
             - agent
             - workflow
             - connection
-        project_id:
-          type: string
-          format: uuid
         name:
           type: string
         spec:
@@ -2844,12 +4723,7 @@ components:
             type: string
       required:
         - question
-        - audience
-        - market
-        - time_scope
-        - context
-        - constraints
-      description: 产品经理 input 使用此结构的 JSON 字符串；各列表最多 10 项。竞品模式要求 competitors/dimensions，调研要求至少一个授权资料来源。
+      description: 产品经理 input 使用此结构的 JSON 字符串；只有任务目标必填，省略背景表示未提供，不推测用户资料。各列表最多 10 项。竞品模式要求 competitors/dimensions，调研要求至少一个授权资料来源。
     Actor:
       type: object
       additionalProperties: false
@@ -2934,6 +4808,7 @@ components:
               - schedule
               - manage_run
               - manage_schedule
+              - manage_factory
               - manage_connections
         expires_at:
           type: string
@@ -2967,6 +4842,7 @@ components:
               - schedule
               - manage_run
               - manage_schedule
+              - manage_factory
               - manage_connections
         expires_at:
           type: string
@@ -2999,6 +4875,7 @@ components:
               - schedule
               - manage_run
               - manage_schedule
+              - manage_factory
               - manage_connections
         expires_at:
           type: string

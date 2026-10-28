@@ -28,35 +28,24 @@ func (h handler) cronAllowed(w http.ResponseWriter, r *http.Request, action stri
 	return !backendError(w, err) && h.allowed(w, r, item.Workflow.ProjectID, action, item.CreatedBy)
 }
 
-func catalogAction(kind, action string) string {
-	if kind == "template" {
-		if action == "read" {
-			return "read_templates"
-		}
-		return "manage_templates"
+func catalogAction(action string) string {
+	if action == "read" {
+		return "read_catalog"
 	}
-	if kind == "connection" {
-		return "manage_connections"
-	}
-	return action
+	return "manage_catalog"
 }
 
 func (h handler) catalogAllowed(w http.ResponseWriter, r *http.Request, version bool, action string) bool {
-	var project, kind string
-	if version {
-		item, err := catalog.ReadVersion(r.Context(), h.backend.Namespace(), r.PathValue("id"))
-		if backendError(w, err) {
-			return false
-		}
-		project, kind = item.ProjectID, item.Kind
-	} else {
-		item, err := catalog.Get(r.Context(), h.backend.Namespace(), r.PathValue("id"))
-		if backendError(w, err) {
-			return false
-		}
-		project, kind = item.ProjectID, item.Kind
+	if !h.allowed(w, r, "", catalogAction(action), "") {
+		return false
 	}
-	return h.allowed(w, r, project, catalogAction(kind, action), "")
+	var err error
+	if version {
+		_, err = catalog.ReadVersion(r.Context(), h.backend.Namespace(), r.PathValue("id"))
+	} else {
+		_, err = catalog.Get(r.Context(), h.backend.Namespace(), r.PathValue("id"))
+	}
+	return !backendError(w, err)
 }
 
 func (h handler) visible(ctx context.Context, project, action string) (bool, error) {

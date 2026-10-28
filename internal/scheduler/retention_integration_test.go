@@ -16,7 +16,7 @@ func TestHatchetExpiredInputKeepsRerunReceiptButRejectsNewRerun(t *testing.T) {
 	_, b, handler := integrationSetup(t)
 	project := registerTestProject(t, b)
 	ctx := context.Background()
-	d := workflow.Definition{ProjectID: project.ID, Input: "到期输入", Nodes: []workflow.Node{{ID: "one", Executor: "eino", Model: "one", Instruction: "临时执行指令"}}}
+	d := workflow.Definition{ProjectID: project.ID, Input: "到期输入", Nodes: []workflow.Node{{ID: "one", Executor: "eino", Model: "one", Handoff: testHandoff(), Instruction: "临时执行指令"}}}
 	original, err := b.Submit(ctx, d, "original")
 	if err != nil {
 		t.Fatal(err)

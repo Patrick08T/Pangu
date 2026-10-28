@@ -1,0 +1,49 @@
+# 设计和实验模板；不可直接作为 Eino 配置运行。
+spec_version: "1"
+objective: null
+mode: build # build | diagnose | optimize
+inputs:
+  source: null
+  scope: null
+  snapshot_version: null
+acceptance:
+  business_outcomes: []
+  hard_constraints: []
+  insufficient_evidence_behavior: null
+  protected_grader_version: null
+budget:
+  total_seconds: null
+  tool_calls: null
+  retry_and_cache_counting: null
+  finalization_reserve_seconds: null
+nodes: [] # id, responsibility, dependencies, schemas, tools, timeout, retry, stop, failure route
+handoff:
+  schema_version: "1"
+  required_scope_fields: []
+  evidence_storage: null
+  query_ledger: null
+  authoritative_budget_store: null
+  context_selection_policy: null
+  raw_evidence_fallback: null
+evaluation:
+  development_set: null
+  protected_acceptance_set: null
+  repetitions: null
+  quality_metrics: []
+  efficiency_metrics: []
+  thresholds_and_owner: null
+experiment:
+  baseline_version: null
+  candidate_version: null
+  failure_evidence: []
+  hypothesis: null
+  changed_factor: null
+  frozen_conditions: []
+  results: null
+  uncertainty: null
+release:
+  existing_authorization_scope: null
+  method: null
+  rollback_version: null
+  rollback_triggers: []
+  observed_status: not_deployed

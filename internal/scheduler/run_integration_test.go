@@ -17,7 +17,7 @@ func TestHatchetRunListAndNamespaceIsolation(t *testing.T) {
 	var accepted struct {
 		RunID string `json:"run_id"`
 	}
-	definition := workflow.Definition{ProjectID: project.ID, Nodes: []workflow.Node{{ID: "one", Executor: "eino", Model: "one", Instruction: "输出"}}}
+	definition := workflow.Definition{ProjectID: project.ID, Nodes: []workflow.Node{{ID: "one", Executor: "eino", Model: "one", Handoff: testHandoff(), Instruction: "输出"}}}
 	request(t, h, "POST", "/runs", definition, 202, &accepted)
 	details := waitRun(t, h, accepted.RunID)
 	q := scheduler.RunQuery{Since: time.Now().Add(-time.Hour), Until: time.Now(), Limit: 1}

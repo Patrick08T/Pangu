@@ -29,7 +29,7 @@ func TestArchivedVersionDoesNotPreventPausingExistingCron(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a, err := catalog.Create(ctx, "api-test", catalog.NewObject{Kind: "agent", ProjectID: p.ID, Name: "固定版本", Spec: catalog.Spec{Agent: &workflow.Node{ID: "one", Executor: "codex", Instruction: "检查"}}})
+	a, err := catalog.Create(ctx, "api-test", catalog.NewObject{Kind: "agent", Name: "固定版本", Spec: catalog.Spec{Agent: &workflow.Node{ID: "one", Executor: "codex", Handoff: testHandoff(), Instruction: "检查"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func TestArchivedVersionDoesNotPreventPausingExistingCron(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d, err := catalog.Compile(ctx, "api-test", v.ID, "")
+	d, err := catalog.Compile(ctx, "api-test", v.ID, p.ID, "")
 	if err != nil {
 		t.Fatal(err)
 	}

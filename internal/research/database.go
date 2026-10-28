@@ -78,7 +78,7 @@ func save(ctx context.Context, conn *pgx.Conn, run, node string, out workflow.No
 	if cancelled {
 		return errors.New("运行已取消，拒绝发布报告")
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO pangu.research_reports(id,run_id,node_run_id,title,body,output,evidence) VALUES($1,$2,$3,$4,$5,$6,$7)`, report.ID, run, node, report.Title, []byte(report.Markdown), data, evidence)
+	_, err = tx.Exec(ctx, `INSERT INTO pangu.research_reports(id,run_id,node_run_id,title,body,output,evidence,metadata) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, report.ID, run, node, report.Title, []byte(report.Markdown), data, evidence, report.Metadata)
 	if err != nil {
 		return err
 	}

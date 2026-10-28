@@ -16,6 +16,9 @@ import (
 	hatchet "github.com/hatchet-dev/hatchet/sdks/go"
 )
 
+// shortcut: Hatchet 要求有限 duration；支持无期限执行后改用原生选项。
+const engineHorizon time.Duration = 1<<63 - 1
+
 const WorkflowName = "pangu-orchestrate-v2"
 const NodeTaskName = "pangu-agent-v2"
 const CodexTaskName = "pangu-codex-v1"
@@ -31,6 +34,7 @@ func NewBackend(client *hatchet.Client) Backend {
 	// SDK 的功能客户端采用无锁延迟初始化，在 HTTP 并发请求前完成初始化。
 	client.Runs()
 	client.Crons()
+	client.Events()
 	return Backend{client: client}
 }
 
@@ -42,12 +46,9 @@ func NewWorker(client *hatchet.Client, execute func(context.Context, workflow.No
 		return runAgent(ctx, execute, input)
 	}
 	node := client.NewStandaloneTask(NodeTaskName, run,
-		hatchet.WithRetries(2), hatchet.WithRetryBackoff(2, 30), hatchet.WithExecutionTimeout(3*time.Minute))
-	maximum, strategy := int32(1), hatchet.GroupRoundRobin
+		hatchet.WithRetries(2), hatchet.WithRetryBackoff(2, 30), hatchet.WithExecutionTimeout(engineHorizon), hatchet.WithScheduleTimeout(engineHorizon))
 	codex := client.NewStandaloneTask(CodexTaskName, run,
-		hatchet.WithRetries(2), hatchet.WithRetryBackoff(2, 30), hatchet.WithExecutionTimeout(30*time.Minute),
-		hatchet.WithScheduleTimeout(6*time.Hour),
-		hatchet.WithConcurrency(&hatchet.Concurrency{Expression: "'codex-workspace'", MaxRuns: &maximum, LimitStrategy: &strategy}))
+		hatchet.WithRetries(2), hatchet.WithRetryBackoff(2, 30), hatchet.WithExecutionTimeout(engineHorizon), hatchet.WithScheduleTimeout(engineHorizon))
 	root := client.NewStandaloneDurableTask(WorkflowName, func(ctx hatchet.DurableContext, input runInput) (map[string]workflow.NodeOutput, error) {
 		d := input.Workflow
 		if d.ProjectID != "" {
@@ -55,15 +56,29 @@ func NewWorker(client *hatchet.Client, execute func(context.Context, workflow.No
 				return nil, hatchet.NewNonRetryableError(err)
 			}
 		}
-		return workflow.Run(d, func(inputs []workflow.NodeInput) ([]workflow.NodeOutput, error) {
+		var reused map[string]workflow.NodeOutput
+		if input.Fork != nil {
+			var err error
+			reused, err = workspace.ImportCheckpoints(ctx.GetContext(), ctx.WorkflowRunId(), input.Fork)
+			if err != nil {
+				return nil, hatchet.NewNonRetryableError(err)
+			}
+		}
+		return workflow.RunFrom(d, reused, func(inputs []workflow.NodeInput) ([]workflow.NodeOutput, error) {
+			if err := waitApprovals(ctx, client, input.RequestID, inputs); err != nil {
+				return nil, err
+			}
 			return runLayer(ctx, node, codex, inputs)
 		})
-	}, hatchet.WithRetries(2), hatchet.WithExecutionTimeout(6*time.Hour), hatchet.WithWorkflowIdempotency(hatchet.IdempotencyConfig{Expression: "input.request_id", TTL: 90 * 24 * time.Hour, Method: hatchet.IdempotencyMethodTTL}))
+	}, hatchet.WithRetries(2), hatchet.WithExecutionTimeout(engineHorizon), hatchet.WithScheduleTimeout(engineHorizon), hatchet.WithWorkflowIdempotency(hatchet.IdempotencyConfig{Expression: "input.request_id", TTL: 90 * 24 * time.Hour, Method: hatchet.IdempotencyMethodTTL}))
 	cron := newCronTrigger(client)
-	return client.NewWorker("pangu-worker", hatchet.WithWorkflows(node, codex, root, preflight, cron), hatchet.WithSlots(16), hatchet.WithDurableSlots(8))
+	return client.NewWorker("pangu-worker", hatchet.WithWorkflows(node, codex, root, preflight, cron, newModelChoices(client)), hatchet.WithSlots(16), hatchet.WithDurableSlots(8))
 }
 
 func prepareWorkspace(ctx context.Context, id, namespace string, input runInput) error {
+	if input.Fork != nil {
+		return workspace.EnsureFork(ctx, id, input.Workflow.ProjectID, namespace, input.SourceRunID, input.Fork.Commit)
+	}
 	if input.SourceRunID != "" {
 		return workspace.EnsureRerun(ctx, id, input.Workflow.ProjectID, namespace, input.SourceRunID)
 	}
@@ -80,7 +95,7 @@ func runLayer(ctx hatchet.DurableContext, eino, codex *hatchet.StandaloneTask, i
 	names := make([]string, len(inputs))
 	var failures []error
 	for i, input := range inputs {
-		if err := allowDispatch(ctx.GetContext(), ctx.WorkflowRunId()); err != nil {
+		if err := waitNode(ctx.GetContext(), ctx.WorkflowRunId(), input.Node.ID); err != nil {
 			failures = append(failures, err)
 			break
 		}

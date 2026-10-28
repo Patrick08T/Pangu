@@ -4,18 +4,22 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/Patrick08T/Pangu/internal/diagnostic"
+	"github.com/Patrick08T/Pangu/internal/trace"
 	"github.com/Patrick08T/Pangu/internal/workflow"
 )
 
@@ -97,7 +101,7 @@ func TestNativeCodexForcesDirectToolsDespiteModelCodeMode(t *testing.T) {
 	args := append([]string{"exec", "--ephemeral", "--json", "--model=local-code-mode", "--cd", dir}, codexIsolationArgs(dir)...)
 	cmd := exec.CommandContext(ctx, os.Getenv("PANGU_CODEX_BINARY"), append(args, "-")...)
 	cmd.Dir, cmd.Stdin = dir, strings.NewReader("本地工具模式测试")
-	cmd.Env = append(codexEnvironment(), "PANGU_CODEX_TOOL_CALLS=10")
+	cmd.Env = append(codexEnvironment(), "PANGU_CODEX_TRACE=1")
 	out := &diagnostic.Buffer{Limit: 8192}
 	log := &diagnostic.Buffer{Limit: 8192}
 	cmd.Stdout, cmd.Stderr, cmd.WaitDelay = out, log, time.Second
@@ -107,30 +111,12 @@ func TestNativeCodexForcesDirectToolsDespiteModelCodeMode(t *testing.T) {
 	}
 }
 
-func TestNativeCodexDeniesEleventhToolBeforeWriting(t *testing.T) {
+func TestNativeCodexRunsBeyondTenToolsWithCorrelatedTrace(t *testing.T) {
 	var calls atomic.Int32
 	dir := nativePolicyWorkspace(t, func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasSuffix(r.URL.Path, "/responses") {
-			http.NotFound(w, r)
-			return
-		}
 		n := calls.Add(1)
-		if n == 2 {
-			var body struct {
-				Input []struct {
-					Type   string
-					Output json.RawMessage
-				}
-			}
-			_ = json.NewDecoder(r.Body).Decode(&body)
-			for _, item := range body.Input {
-				if strings.Contains(item.Type, "tool_call_output") || item.Type == "function_call_output" {
-					t.Logf("首次工具响应: %s", item.Output)
-				}
-			}
-		}
 		if n > 12 {
-			w.WriteHeader(http.StatusUnauthorized)
+			nativeFinalResponse(w)
 			return
 		}
 		nativeToolResponse(w, map[string]any{"type": "custom_tool_call", "call_id": fmt.Sprint(n), "name": "apply_patch",
@@ -138,41 +124,112 @@ func TestNativeCodexDeniesEleventhToolBeforeWriting(t *testing.T) {
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	_, err := Execute(ctx, workflow.NodeInput{Workspace: dir, Node: workflow.Node{ID: "budget", Executor: "codex", Model: "gpt-5.4", Instruction: "本地限额测试"}})
-	if workflow.FailureKind(err) != "tool_limit" || workflow.CanRetry(err) {
-		t.Fatalf("超额未停止: %v，本地模型请求数=%d", err, calls.Load())
+	var events []trace.Event
+	ctx = trace.WithSink(ctx, func(_ context.Context, event trace.Event) error { events = append(events, event); return nil })
+	_, err := Execute(ctx, workflow.NodeInput{Workspace: dir, Node: workflow.Node{ID: "trace", Executor: "codex", Model: "gpt-5.4", Instruction: "本地追踪测试"}})
+	if err != nil {
+		t.Fatalf("超过十次调用失败: %v requests=%d", err, calls.Load())
 	}
-	for n := 1; n <= 10; n++ {
+	for n := 1; n <= 12; n++ {
 		if data, err := os.ReadFile(filepath.Join(dir, fmt.Sprintf("proof-%d.txt", n))); err != nil || strings.TrimSpace(string(data)) != "ok" {
-			t.Fatalf("第%d次未实际执行: %s %v", n, data, err)
+			t.Fatalf("第 %d 次未执行: %v", n, err)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(dir, "proof-11.txt")); !os.IsNotExist(err) {
-		t.Fatal("第11次调用已写入", err)
+	models, tools := map[string]bool{}, 0
+	for _, event := range events {
+		if event.Kind == "model" {
+			models[event.SpanID] = true
+		}
+	}
+	for _, event := range events {
+		if event.Kind == "tool" && event.Phase == "end" {
+			tools++
+			if event.Status != "succeeded" || !models[event.ParentID] {
+				t.Fatalf("调用关联或结果缺失: %+v", event)
+			}
+		}
+	}
+	if tools != 12 || len(models) != 13 {
+		t.Fatalf("trace 不完整: tools=%d models=%d events=%d", tools, len(models), len(events))
 	}
 }
 
-func TestNativeCodexToolDeadlineStopsDescendants(t *testing.T) {
+func nativeFinalResponse(w http.ResponseWriter) {
+	nativeToolResponse(w, map[string]any{"type": "message", "role": "assistant", "content": []map[string]string{{"type": "output_text", "text": "完成"}}})
+}
+
+func TestNativeCodexCancellationStillStopsDescendants(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("Windows Job 后代终止场景")
 	}
 	dir := nativePolicyWorkspace(t, func(w http.ResponseWriter, r *http.Request) {
-		args, _ := json.Marshal(map[string]any{"cmd": "Set-Content -LiteralPath started.txt -Value started; Start-Sleep -Seconds 35; Set-Content -LiteralPath orphan.txt -Value leaked", "timeout_ms": 60000})
-		nativeToolResponse(w, map[string]any{"type": "function_call", "call_id": "timeout", "name": "exec_command", "arguments": string(args)})
+		args, _ := json.Marshal(map[string]any{"cmd": "Set-Content -LiteralPath started.txt -Value started; Start-Sleep -Seconds 4; Set-Content -LiteralPath orphan.txt -Value leaked", "yield_time_ms": 10000})
+		nativeToolResponse(w, map[string]any{"type": "function_call", "call_id": "cancel", "name": "exec_command", "arguments": string(args)})
 	})
-	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	started := time.Now()
-	_, err := Execute(ctx, workflow.NodeInput{Workspace: dir, Node: workflow.Node{ID: "deadline", Executor: "codex", Model: "gpt-5.4", Instruction: "本地时限测试"}})
-	if workflow.FailureKind(err) != "tool_timeout" || workflow.CanRetry(err) || time.Since(started) > 35*time.Second {
-		t.Fatalf("单工具30秒时限未强制: %v, 耗时%v", err, time.Since(started))
+	done := make(chan error, 1)
+	go func() {
+		_, err := Execute(ctx, workflow.NodeInput{Workspace: dir, Node: workflow.Node{ID: "cancel", Executor: "codex", Model: "gpt-5.4", Instruction: "本地取消测试"}})
+		done <- err
+	}()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "started.txt")); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("命令没有启动")
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "started.txt")); err != nil {
-		t.Fatal("未证明工具子进程实际开始执行", err)
+	cancel()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("取消后仍成功")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("进程未停止")
 	}
-	time.Sleep(max(0, 37*time.Second-time.Since(started)))
+	time.Sleep(4 * time.Second)
 	if _, err := os.Stat(filepath.Join(dir, "orphan.txt")); !os.IsNotExist(err) {
-		t.Fatal("超时后仍有子进程写入", err)
+		t.Fatal("取消后仍有子进程写入", err)
+	}
+}
+
+func TestNativeCodexToolCanRunBeyondThirtySeconds(t *testing.T) {
+	var calls atomic.Int32
+	var dir string
+	dir = nativePolicyWorkspace(t, func(w http.ResponseWriter, r *http.Request) {
+		n := calls.Add(1)
+		if _, err := os.Stat(filepath.Join(dir, "completed.txt")); err == nil {
+			nativeFinalResponse(w)
+			return
+		}
+		name, args := "exec_command", map[string]any{"cmd": "Start-Sleep -Seconds 32; Set-Content -LiteralPath completed.txt -Value done", "yield_time_ms": 1000}
+		if n > 1 {
+			body, _ := io.ReadAll(r.Body)
+			match := regexp.MustCompile(`session ID (\d+)`).FindSubmatch(body)
+			if len(match) != 2 {
+				t.Errorf("命令没有返回可轮询会话: %s", body)
+				nativeFinalResponse(w)
+				return
+			}
+			id, _ := strconv.Atoi(string(match[1]))
+			name, args = "write_stdin", map[string]any{"session_id": id, "chars": "", "yield_time_ms": 1000}
+		}
+		encoded, _ := json.Marshal(args)
+		nativeToolResponse(w, map[string]any{"type": "function_call", "call_id": fmt.Sprintf("long-%d", n), "name": name, "arguments": string(encoded)})
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Second)
+	defer cancel()
+	_, err := Execute(ctx, workflow.NodeInput{Workspace: dir, Node: workflow.Node{ID: "long", Executor: "codex", Model: "gpt-5.4", Instruction: "本地长工具测试"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = os.Stat(filepath.Join(dir, "completed.txt")); err != nil {
+		t.Fatal("超过 30 秒工具未完成", err)
 	}
 }
 

@@ -3,7 +3,6 @@ package agent
 import (
 	"context"
 	"encoding/json"
-	"time"
 
 	"github.com/Patrick08T/Pangu/internal/workflow"
 )
@@ -20,8 +19,7 @@ func Execute(ctx context.Context, input workflow.NodeInput) (workflow.NodeOutput
 	if err := input.Node.Validate(); err != nil {
 		return workflow.NodeOutput{}, &workflow.Failure{Kind: "parameter", Cause: err}
 	}
-	ctx, cancel := context.WithTimeout(ctx, time.Duration(input.Node.EffectivePolicy().TimeoutSeconds)*time.Second)
-	defer cancel()
+	input.Node.Instruction += input.Node.Handoff.Instruction()
 	var output workflow.NodeOutput
 	var err error
 	if input.Node.Executor == "codex" {

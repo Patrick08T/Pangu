@@ -15,10 +15,10 @@ func researchInput() workflow.NodeInput {
 	return workflow.NodeInput{Node: workflow.Node{ID: "pm", Executor: "eino", Model: "test", Instruction: "规划", Role: "product_manager", Mode: "planning"}, Input: string(raw)}
 }
 
-func TestToolsCannotExpandAuthorityAndShareCallLimit(t *testing.T) {
+func TestToolsCannotExpandAuthorityAndRecordEveryAttempt(t *testing.T) {
 	in := researchInput()
-	in.Node.Policy = &workflow.Policy{TimeoutSeconds: 180, ToolCalls: 2}
-	s, err := New(in)
+	in.Node.Policy = &workflow.Policy{}
+	s, err := New(in, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,13 +28,13 @@ func TestToolsCannotExpandAuthorityAndShareCallLimit(t *testing.T) {
 			t.Fatal("允许模型扩大权限")
 		}
 	}
-	if s.calls != 2 {
-		t.Fatalf("工具失败也应消耗次数，实际 %d", s.calls)
+	if s.calls != 3 {
+		t.Fatalf("工具失败也应记录证据，实际 %d", s.calls)
 	}
 }
 
 func TestReportRejectsInventedSourcesAndRequiresModeSections(t *testing.T) {
-	s, err := New(researchInput())
+	s, err := New(researchInput(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,6 +43,7 @@ func TestReportRejectsInventedSourcesAndRequiresModeSections(t *testing.T) {
 		t.Fatal("接受虚构来源")
 	}
 	args.SourceIDs = []string{"input"}
+	args.Claims = []Claim{{ID: "c1", Statement: "规划效果尚需试点", Kind: "unknown", Scope: "当前团队", Uncertainty: "尚无真人采纳数据"}}
 	if _, err := s.register(args); err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +57,7 @@ func TestReportRejectsInventedSourcesAndRequiresModeSections(t *testing.T) {
 }
 
 func TestReportTitleAndMarkdownCannotLeakOrInventLinks(t *testing.T) {
-	s, err := New(researchInput())
+	s, err := New(researchInput(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

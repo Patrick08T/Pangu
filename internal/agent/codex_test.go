@@ -34,6 +34,9 @@ func TestMain(m *testing.M) {
 	}
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
+		case "debug":
+			fmt.Print(`{"models":[{"slug":"bridge","visibility":"list"},{"slug":"checkpoint-source","visibility":"list"},{"slug":"checkpoint-recover","visibility":"list"}]}`)
+			os.Exit(0)
 		case "linger":
 			time.Sleep(30 * time.Second)
 			os.Exit(0)
@@ -44,11 +47,11 @@ func TestMain(m *testing.M) {
 		case "login":
 			os.Exit(0)
 		case "exec":
-			if os.Getenv("PANGU_CODEX_POLICY_PROBE") == "1" {
+			if os.Getenv("PANGU_CODEX_TRACE_PROBE") == "1" {
 				if _, err := os.Stat(filepath.Join(os.Getenv("CODEX_HOME"), "unsupported")); err == nil {
 					fmt.Print("stock-codex")
 				} else {
-					fmt.Print("pangu-codex-policy/1")
+					fmt.Print("pangu-codex-trace/1")
 				}
 				os.Exit(0)
 			}
@@ -65,14 +68,32 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func TestCodexRejectsRuntimeWithoutHardLimits(t *testing.T) {
+func TestCodexRejectsRuntimeWithoutTrace(t *testing.T) {
 	setupCodex(t)
 	if err := os.WriteFile(filepath.Join(os.Getenv("PANGU_CODEX_HOME"), "unsupported"), nil, 0600); err != nil {
 		t.Fatal(err)
 	}
 	_, err := Execute(context.Background(), codexInput("model"))
 	if err == nil || workflow.CanRetry(err) || workflow.FailureKind(err) != "parameter" {
-		t.Fatal("未拒绝缺少硬限制的运行时", err)
+		t.Fatal("未拒绝缺少行为追踪的运行时", err)
+	}
+}
+
+func TestCodexOutputUsesSeparateBridgeAndSummaryLimits(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "output.txt")
+	for _, size := range []int{16384, 16385, 1024 * 1024, 1024*1024 + 1} {
+		if err := os.WriteFile(path, []byte(strings.Repeat("x", size)), 0600); err != nil {
+			t.Fatal(err)
+		}
+		for _, limit := range []int{16384, 1024 * 1024} {
+			out, err := codexOutput(path, limit)
+			if size <= limit && (err != nil || len(out) != size) {
+				t.Fatalf("允许的回复被截断: size=%d limit=%d err=%v", size, limit, err)
+			}
+			if size > limit && (workflow.FailureKind(err) != "output" || workflow.CanRetry(err) || out != "") {
+				t.Fatalf("超限回复未明确拒绝: size=%d limit=%d err=%v", size, limit, err)
+			}
+		}
 	}
 }
 
@@ -99,6 +120,20 @@ func codexHelper() int {
 	var input workflow.NodeInput
 	if json.Unmarshal(data, &input) != nil {
 		return 2
+	}
+	if input.Node.Model == "bridge" {
+		return codexBridgeHelper(data, args)
+	}
+	if input.Node.Model == "factory" {
+		return factoryCodexHelper(input, args)
+	}
+	if os.Getenv("PANGU_CODEX_SEARCH_QUERY") != "" {
+		return codexSearchHelper(input, args)
+	}
+	if input.Node.Model == "trace-failure" {
+		fmt.Fprintln(os.Stdout, `{"type":"pangu.trace","span_id":"1","kind":"model","phase":"start","name":"test","status":"running"}`)
+		time.Sleep(time.Minute)
+		return 0
 	}
 	fmt.Fprintln(os.Stdout, `{"type":"item.completed","item":{"type":"command_execution","id":"test","command":"go test ./...","aggregated_output":"ok","exit_code":0}}`)
 	if input.Node.Model == "fail" {

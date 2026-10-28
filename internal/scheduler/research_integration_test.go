@@ -41,7 +41,7 @@ func TestHatchetProductManagerFourModesAndReportChain(t *testing.T) {
 	d := workflow.Definition{ProjectID: project.ID, Input: string(raw)}
 	previous := ""
 	for _, mode := range []string{"research", "competition", "planning", "design"} {
-		node := workflow.Node{ID: mode, Executor: "eino", Model: mode, Role: "product_manager", Mode: mode, Instruction: "根据已授权资料生成中文报告"}
+		node := workflow.Node{ID: mode, Executor: "eino", Model: mode, Role: "product_manager", Mode: mode, Handoff: testHandoff(), Instruction: "根据已授权资料生成中文报告"}
 		if previous != "" {
 			node.DependsOn = []string{previous}
 		}
@@ -132,6 +132,7 @@ func pmReport(mode, parent string) map[string]any {
 		sources = append(sources, "p"+parent+"_0")
 	}
 	result := map[string]any{"title": mode + " 中文报告", "markdown": body, "source_ids": sources}
+	result["claims"] = []research.Claim{{ID: "c1", Statement: "基准资料标识为验证项目", Kind: "fact", Scope: "当前测试 Git 基准", Uncertainty: "模拟测试不代表真人采纳", Evidence: []research.Evidence{{SourceID: "d0", Quote: "验证项目", SourceDate: "unknown"}}}}
 	if mode == "design" {
 		result["tasks"] = []research.Task{{ID: "api", Title: "实现 API", Scope: "输入校验", Deliverable: "接口", Acceptance: "错误输入返回 400"}, {ID: "ui", Title: "实现界面", Scope: "提交表单", DependsOn: []string{"api"}, Deliverable: "页面", Acceptance: "可查看结果"}}
 	}

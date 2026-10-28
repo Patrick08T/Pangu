@@ -6,9 +6,12 @@ import (
 	"time"
 
 	"github.com/Patrick08T/Pangu/internal/agent"
+	"github.com/Patrick08T/Pangu/internal/approval"
 	"github.com/Patrick08T/Pangu/internal/diagnostic"
 	"github.com/Patrick08T/Pangu/internal/execution"
 	"github.com/Patrick08T/Pangu/internal/research"
+	"github.com/Patrick08T/Pangu/internal/trace"
+	"github.com/Patrick08T/Pangu/internal/usage"
 	"github.com/Patrick08T/Pangu/internal/workflow"
 	"github.com/Patrick08T/Pangu/internal/workspace"
 	"github.com/google/uuid"
@@ -20,20 +23,17 @@ func runAgent(ctx hatchet.Context, execute func(context.Context, workflow.NodeIn
 		return workflow.NodeOutput{}, hatchet.NewNonRetryableError(err)
 	}
 	policy := input.Node.EffectivePolicy()
-	nodeCtx, cancelNode := context.WithTimeout(ctx.GetContext(), time.Duration(policy.TimeoutSeconds)*time.Second)
-	defer cancelNode()
+	nodeCtx := ctx.GetContext()
 	parent := ctx.ParentWorkflowRunId()
 	if parent == nil {
 		return workflow.NodeOutput{}, hatchet.NewNonRetryableError(errors.New("Agent 节点必须由 Pangu 根运行派生"))
 	}
 	item := execution.Attempt{RunID: *parent, NodeRunID: ctx.WorkflowRunId(), NodeID: input.Node.ID, Attempt: ctx.RetryCount() + 1}
-	if input.Node.Executor == "codex" {
-		item.ProcessScope = uuid.NewString()
-	}
-	if err := execution.Begin(nodeCtx, &item); err != nil {
+	item.ProcessScope = uuid.NewString()
+	if err := beginAttempt(nodeCtx, &item); err != nil {
 		return workflow.NodeOutput{}, hatchet.NewNonRetryableError(err)
 	}
-	out, err := executeNode(nodeCtx, item, input, execute)
+	out, err := tracedNode(nodeCtx, item, input, execute)
 	if errors.Is(err, workflow.ErrStopUnconfirmed) {
 		return out, hatchet.NewNonRetryableError(err)
 	}
@@ -64,10 +64,26 @@ func runAgent(ctx hatchet.Context, execute func(context.Context, workflow.NodeIn
 	return out, err
 }
 
+func tracedNode(ctx context.Context, item execution.Attempt, input workflow.NodeInput, execute func(context.Context, workflow.NodeInput) (workflow.NodeOutput, error)) (workflow.NodeOutput, error) {
+	ctx = trace.WithRun(ctx, item.RunID, input.Node.ID, item.NodeRunID, item.Attempt)
+	ctx, span, err := trace.Start(ctx, "node", input.Node.ID, input.Input)
+	if err != nil {
+		return workflow.NodeOutput{}, err
+	}
+	out, err := executeNode(ctx, item, input, execute)
+	return out, errors.Join(err, span.End(out.Text, err))
+}
+
 func executeNode(ctx context.Context, item execution.Attempt, input workflow.NodeInput, execute func(context.Context, workflow.NodeInput) (workflow.NodeOutput, error)) (workflow.NodeOutput, error) {
+	ctx = usage.WithRun(ctx, item.RunID, input.Node.ID, item.NodeRunID, item.Attempt)
 	input.ProcessScope = item.ProcessScope
 	input.RunID, input.NodeRunID = item.RunID, item.NodeRunID
 	call := func() (workflow.NodeOutput, error) {
+		if input.Node.Approval != nil {
+			if err := approval.Consume(ctx, item.RunID, input, input.ApprovalID); err != nil {
+				return workflow.NodeOutput{}, err
+			}
+		}
 		out, err := execute(ctx, input)
 		out.RunID = item.NodeRunID
 		if err == nil {

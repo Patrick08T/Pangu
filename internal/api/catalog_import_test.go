@@ -21,7 +21,7 @@ func TestCatalogImportExportHasExplicitFormatAndNewIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler := testAPI(&fakeBackend{})
-	raw := []byte(`{"format":"pangu.catalog.v1","kind":"template","name":"只读巡检","spec":{"agent":{"id":"inspect","executor":"codex","instruction":"只读检查","read_only":true}}}`)
+	raw := []byte(`{"format":"pangu.catalog.v1","kind":"agent","name":"只读巡检","spec":{"agent":{"id":"inspect","executor":"codex","instruction":"只读检查","read_only":true}}}`)
 	invoke := func(method, path string, body []byte) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, path, bytes.NewReader(body))
 		r.Header.Set("Content-Type", "application/json")

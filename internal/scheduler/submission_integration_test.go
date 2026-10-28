@@ -18,7 +18,7 @@ import (
 func TestHatchetRerunUsesSavedBaseWhenSourceIsUnavailable(t *testing.T) {
 	m, backend, h := integrationSetup(t)
 	project := registerTestProject(t, backend)
-	d := workflow.Definition{ProjectID: project.ID, Nodes: []workflow.Node{{ID: "one", Executor: "eino", Model: "rerun", Instruction: "重跑原快照"}}}
+	d := workflow.Definition{ProjectID: project.ID, Nodes: []workflow.Node{{ID: "one", Executor: "eino", Model: "rerun", Handoff: testHandoff(), Instruction: "重跑原快照"}}}
 	ctx := context.Background()
 	first, err := backend.Submit(ctx, d, "original")
 	if err != nil || first.RunID == "" {
@@ -53,7 +53,7 @@ func TestHatchetRerunUsesSavedBaseWhenSourceIsUnavailable(t *testing.T) {
 func TestHatchetPersistentSubmissionSurvivesLostStoredReceipt(t *testing.T) {
 	m, backend, h := integrationSetup(t)
 	project := registerTestProject(t, backend)
-	d := workflow.Definition{ProjectID: project.ID, Nodes: []workflow.Node{{ID: "one", Executor: "eino", Model: "once", Instruction: "只执行一次"}}}
+	d := workflow.Definition{ProjectID: project.ID, Nodes: []workflow.Node{{ID: "one", Executor: "eino", Model: "once", Handoff: testHandoff(), Instruction: "只执行一次"}}}
 	ctx := context.Background()
 	items := make(chan *submission.Record, 4)
 	var group sync.WaitGroup
@@ -124,7 +124,7 @@ func TestHatchetRegisteredButOfflineWorkerRejectsNewSubmission(t *testing.T) {
 	if err := stop(); err != nil {
 		t.Fatal(err)
 	}
-	d := workflow.Definition{ProjectID: project.ID, Nodes: []workflow.Node{{ID: "one", Executor: "eino", Model: "offline", Instruction: "拒绝"}}}
+	d := workflow.Definition{ProjectID: project.ID, Nodes: []workflow.Node{{ID: "one", Executor: "eino", Model: "offline", Handoff: testHandoff(), Instruction: "拒绝"}}}
 	if item, err := backend.Submit(context.Background(), d, "offline"); err == nil || item != nil {
 		t.Fatalf("离线 Worker 接受了新提交: %+v %v", item, err)
 	}

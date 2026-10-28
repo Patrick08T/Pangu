@@ -51,7 +51,7 @@ func TestHatchetSeedColdBackupFixture(t *testing.T) {
 	t.Cleanup(func() { _ = stop() })
 	awaitWorker(t, b)
 	project := backupProject(t, b, root)
-	d := workflow.Definition{ProjectID: project.ID, Nodes: []workflow.Node{{ID: "code", Executor: "codex", Instruction: "创建恢复演练文件"}}}
+	d := workflow.Definition{ProjectID: project.ID, Nodes: []workflow.Node{{ID: "code", Executor: "codex", Handoff: testHandoff(), Instruction: "创建恢复演练文件"}}}
 	accepted, err := b.Submit(context.Background(), d, "cold-backup")
 	if err != nil {
 		t.Fatal(err)

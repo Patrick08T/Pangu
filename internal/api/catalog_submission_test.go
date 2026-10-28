@@ -34,7 +34,7 @@ func TestArchivedVersionReturnsExistingReceiptButRejectsNewOrChangedRequest(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	object, err := catalog.Create(ctx, "api-test", catalog.NewObject{Kind: "agent", ProjectID: p.ID, Name: "固定版本", Spec: catalog.Spec{Agent: &workflow.Node{ID: "one", Executor: "codex", Instruction: "检查"}}})
+	object, err := catalog.Create(ctx, "api-test", catalog.NewObject{Kind: "agent", Name: "固定版本", Spec: catalog.Spec{Agent: &workflow.Node{ID: "one", Executor: "codex", Handoff: testHandoff(), Instruction: "检查"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func TestArchivedVersionReturnsExistingReceiptButRejectsNewOrChangedRequest(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	d, err := catalog.Compile(ctx, "api-test", v.ID, "原始输入")
+	d, err := catalog.Compile(ctx, "api-test", v.ID, p.ID, "原始输入")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestArchivedVersionReturnsExistingReceiptButRejectsNewOrChangedRequest(t *t
 		key, input string
 		status     int
 	}{{key, "原始输入", 202}, {key, "改写输入", 409}, {uuid.NewString(), "原始输入", 409}} {
-		request := httptest.NewRequest("POST", "/versions/"+strings.ToUpper(v.ID)+"/run", strings.NewReader(`{"input":"`+item.input+`"}`))
+		request := httptest.NewRequest("POST", "/versions/"+strings.ToUpper(v.ID)+"/run", strings.NewReader(`{"project_id":"`+p.ID+`","input":"`+item.input+`"}`))
 		request.Header.Set("Content-Type", "application/json")
 		request.Header.Set("Idempotency-Key", item.key)
 		response := httptest.NewRecorder()

@@ -34,6 +34,10 @@ func (h handler) preflight(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &definition) {
 		return
 	}
+	if err := definition.ValidateHandoffs(); err != nil {
+		problem(w, 400, err.Error())
+		return
+	}
 	if _, err := definition.Layers(); err != nil {
 		problem(w, 400, err.Error())
 		return

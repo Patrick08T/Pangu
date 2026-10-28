@@ -1,14 +1,17 @@
-import {useState} from 'react';
-import {useAction,useQuery} from '../api/hooks';
-import {apiRequest} from '../api/request';
-import {ActionNotice,Page,Pager,QueryState,timestamp,canEdit,type Access,type Schema} from '../console/components';
+import {lazy,Suspense,useState} from 'react';
+import {useQuery} from '../api/hooks';
+import {Page,Pager,QueryState,timestamp,canEdit,type Access,type Schema} from '../console/components';
 import {CatalogEditor} from './editor';
 import {Download} from '../api/download';
 import {VersionPreflight} from './preflight';
+const FlowStudio=lazy(()=>import('../flow/editor').then(module=>({default:module.FlowStudio})));
+const AgentStudio=lazy(()=>import('../agent/editor').then(module=>({default:module.AgentStudio})));
 
 export function CatalogDetail({id,access}:{id:string;access:Access}) {
   const query=useQuery<Schema['CatalogObject']>(`/catalog/${encodeURIComponent(id)}`);
-  return <Page title={query.data?.name??'配置详情'} description="项目与来源版本单独保存，编辑不会迁移项目或改写已发布历史。" actions={<a className="button" href={`#/${query.data?.kind??'agent'}`}>返回配置列表</a>}>
+  if(query.data?.kind==='agent')return <Suspense fallback={<p role="status">正在打开 Agent 工作台…</p>}><AgentStudio key={query.data.id} item={query.data} access={access}/></Suspense>;
+  if(query.data?.spec.flow&&query.data.kind==='workflow')return <Suspense fallback={<p role="status">正在打开画布…</p>}><FlowStudio key={query.data.id} item={query.data} access={access}/></Suspense>;
+  return <Page title={query.data?.name??'配置详情'} description="共享配置独立于项目，编辑不改写已发布历史。" actions={<a className="button" href={`#/${query.data?.kind??'agent'}`}>返回配置列表</a>}>
     <QueryState {...query} retry={query.reload}/>{query.data&&<>
       <CatalogEditor key={`${id}/${query.data.revision}/${query.data.archived}`} item={query.data} access={access} changed={query.reload}/>
       <Download path={`/catalog/${id}/export`} filename={`${id}.json`}>导出当前草稿</Download>
@@ -31,19 +34,8 @@ function Versions({item,access}:{item:Schema['CatalogObject'];access:Access}) {
 }
 
 function VersionDetail({version,access}:{version:Schema['CatalogVersion'];access:Access}) {
-  const [name,setName]=useState(''),[connection,setConnection]=useState(''),action=useAction();
-  async function bind(){
-    const item=await apiRequest<Schema['CatalogObject']>(`/versions/${version.id}/bind`,{method:'POST',csrf:access.session.csrf,body:{project_id:access.project,name,connection_version:connection}});
-    action.navigate(`/catalog/${item.id}`);
-  }
   return <div className="version-detail"><h3>v{version.number} 固定快照</h3><pre>{JSON.stringify(version.spec,null,2)}</pre>
-    {version.kind==='template'&&canEdit(access)&&!version.archived&&<form onSubmit={e=>{e.preventDefault();void action.run(bind);}}>
-      <p>绑定到当前项目 {access.project}，生成新的项目 Agent。绑定后不可移动；原模板更新不会改变此 Agent。</p>
-      <label className="field">项目 Agent 名称<input required value={name} disabled={action.busy} onChange={e=>setName(e.target.value)}/></label>
-      {version.spec.agent?.executor==='eino'&&<label className="field">项目连接版本 ID<input required value={connection} disabled={action.busy} onChange={e=>setConnection(e.target.value)}/><small>由项目管理者发布连接版本后提供，绑定使用该版本的模型。</small></label>}
-      <button className="primary" disabled={action.busy||!access.project}>绑定到当前项目</button></form>}
-    {(version.kind==='agent'||version.kind==='workflow')&&version.project_id===access.project&&canEdit(access)&&!version.archived&&<div className="toolbar"><a className="button primary" href={`#/start/${version.id}`}>使用此版本运行</a><a className="button" href={`#/schedule/new/${version.id}`}>创建定时计划</a></div>}
-    {version.kind!=='template'&&version.project_id===access.project&&canEdit(access)&&!version.archived&&<VersionPreflight version={version} access={access}/>}
-    <ActionNotice {...action}/>
+    {(version.kind==='agent'||version.kind==='workflow')&&!!access.project&&canEdit(access)&&!version.archived&&<div className="toolbar"><a className="button primary" href={`#/start/${version.id}`}>使用此版本运行</a><a className="button" href={`#/schedule/new/${version.id}`}>创建定时计划</a></div>}
+    {!!access.project&&canEdit(access)&&!version.archived&&<VersionPreflight version={version} access={access}/>}
   </div>;
 }

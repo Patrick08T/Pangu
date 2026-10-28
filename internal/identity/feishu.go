@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -49,8 +50,8 @@ func feishuClient() *http.Client {
 	return &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{TLSHandshakeTimeout: 5 * time.Second, ResponseHeaderTimeout: 5 * time.Second, MaxResponseHeaderBytes: 32 * 1024, DisableKeepAlives: true}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 }
 
-func exchange(ctx context.Context, client *http.Client, c Config, code, verifier string) (FeishuUser, error) {
-	form := url.Values{"grant_type": {"authorization_code"}, "client_id": {c.AppID}, "client_secret": {c.AppSecret}, "code": {code}, "redirect_uri": {c.callback()}, "code_verifier": {verifier}}
+func exchange(ctx context.Context, client *http.Client, c Config, code string) (FeishuUser, error) {
+	form := url.Values{"grant_type": {"authorization_code"}, "client_id": {c.AppID}, "client_secret": {c.AppSecret}, "code": {code}, "redirect_uri": {c.callback()}}
 	req, err := http.NewRequestWithContext(ctx, "POST", "https://accounts.feishu.cn/oauth/v3/token", strings.NewReader(form.Encode()))
 	if err != nil {
 		return FeishuUser{}, err
@@ -93,7 +94,11 @@ func feishuJSON(client *http.Client, req *http.Request, out any) error {
 	}
 	defer response.Body.Close()
 	if response.StatusCode != 200 {
-		return errors.New("飞书服务拒绝请求，请检查授权状态和应用配置")
+		var rejected struct {
+			Code int `json:"code"`
+		}
+		_ = json.NewDecoder(io.LimitReader(response.Body, 64*1024)).Decode(&rejected)
+		return fmt.Errorf("飞书服务拒绝请求（HTTP %d，code %d）", response.StatusCode, rejected.Code)
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, 64*1024+1))
 	if err != nil || len(body) > 64*1024 {

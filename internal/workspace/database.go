@@ -58,17 +58,17 @@ func Get(ctx context.Context, id string) (*Run, error) {
 }
 
 func Ensure(ctx context.Context, runID, projectID, namespace string) error {
-	return ensure(ctx, runID, projectID, namespace, "")
+	return ensure(ctx, runID, projectID, namespace, "", "")
 }
 
 func EnsureRerun(ctx context.Context, runID, projectID, namespace, sourceRunID string) error {
 	if runID == sourceRunID || sourceRunID == "" {
 		return errors.New("重跑必须使用新的运行 ID")
 	}
-	return ensure(ctx, runID, projectID, namespace, sourceRunID)
+	return ensure(ctx, runID, projectID, namespace, sourceRunID, "")
 }
 
-func ensure(ctx context.Context, runID, projectID, namespace, sourceRunID string) error {
+func ensure(ctx context.Context, runID, projectID, namespace, sourceRunID, sourceCommit string) error {
 	project, err := ProjectByID(ctx, namespace, projectID)
 	if err != nil {
 		return err
@@ -100,7 +100,7 @@ func ensure(ctx context.Context, runID, projectID, namespace, sourceRunID string
 			}
 			defer release()
 		}
-		record, err = createRun(ctx, conn, runID, root, project, sourceRunID)
+		record, err = createRun(ctx, conn, runID, root, project, sourceRunID, sourceCommit)
 	}
 	if err != nil {
 		return err
@@ -118,8 +118,11 @@ func ensure(ctx context.Context, runID, projectID, namespace, sourceRunID string
 	return err
 }
 
-func createRun(ctx context.Context, conn *pgx.Conn, id, root string, project *Project, sourceRunID string) (*Run, error) {
+func createRun(ctx context.Context, conn *pgx.Conn, id, root string, project *Project, sourceRunID, sourceCommit string) (*Run, error) {
 	commit, err := initialCommit(ctx, project, sourceRunID)
+	if err == nil && sourceCommit != "" {
+		commit, err = forkCommit(ctx, sourceRunID, sourceCommit)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +147,9 @@ func prepareRun(ctx context.Context, conn *pgx.Conn, record *Run, source, source
 				return err
 			}
 			if previous.BaseCommit != record.BaseCommit {
-				return errors.New("重跑基准记录不一致")
+				if _, err := forkCommit(ctx, sourceRunID, record.BaseCommit); err != nil {
+					return err
+				}
 			}
 			source = filepath.Join(previous.Directory, "base")
 		}

@@ -123,6 +123,36 @@ func Bind(ctx context.Context, fire *Fire, request string) error {
 	return err
 }
 
+func Skip(ctx context.Context, fire *Fire, reason string) error {
+	conn, err := database.Open(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close(context.Background())
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(context.Background())
+	if _, err = tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", "schedule:"+fire.ScheduleID); err != nil {
+		return err
+	}
+	changed, err := tx.Exec(ctx, "UPDATE pangu.schedule_fires SET status='skipped',reason=$3 WHERE schedule_id=$1 AND slot=$2 AND status='pending' AND request_id IS NULL", fire.ScheduleID, fire.Slot, reason)
+	if err != nil {
+		return err
+	}
+	if changed.RowsAffected() == 1 {
+		_, err = tx.Exec(ctx, "UPDATE pangu.schedules SET active_slot=NULL WHERE id=$1 AND active_slot=$2", fire.ScheduleID, fire.Slot)
+		if err != nil {
+			return err
+		}
+	}
+	if err = tx.Commit(ctx); err == nil && changed.RowsAffected() == 1 {
+		fire.Status, fire.Reason = "skipped", reason
+	}
+	return err
+}
+
 func scanFire(row pgx.Row) (*Fire, error) {
 	out := &Fire{}
 	var data []byte

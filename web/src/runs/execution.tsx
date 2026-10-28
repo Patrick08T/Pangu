@@ -13,8 +13,8 @@ export function Attempts({run}:{run:string}) {
   </section>;
 }
 
-function AttemptDetail({run,item}:{run:string;item:Schema['Attempt']}) {
-  const query=useQuery<Schema['Attempt']>(`/runs/${run}/nodes/${item.node_run_id}/attempts/${item.attempt}`,5000);
+export function AttemptDetail({run,item,stopped=false}:{run:string;item:Pick<Schema['Attempt'],'node_run_id'|'node_id'|'attempt'>;stopped?:boolean}) {
+  const query=useQuery<Schema['Attempt']>(`/runs/${run}/nodes/${item.node_run_id}/attempts/${item.attempt}`,stopped?0:5000);
   return <div className="evidence"><h3>{item.node_id} · 第 {item.attempt} 次尝试</h3><QueryState {...query} retry={query.reload}/>{query.data&&<>
     <p>错误分类：{query.data.category||'无'}{query.data.truncated?'；诊断已截断':''}</p><pre>{query.data.message||'没有错误诊断。'}</pre>
     {query.data.evidence.map((value,index)=><details key={`${value.id}/${index}`}><summary>{value.command}（退出码 {value.exit_code}）</summary><pre>{value.output}</pre>{value.truncated&&<p>工具输出已截断。</p>}</details>)}

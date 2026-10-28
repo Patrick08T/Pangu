@@ -1,6 +1,6 @@
 {
   "format": "pangu.catalog.v1",
-  "kind": "template",
+  "kind": "agent",
   "name": "产品经理：方案设计与任务拆分",
   "spec": {
     "agent": {
@@ -10,12 +10,15 @@
       "mode": "design",
       "model": "project-connection",
       "description": "产品经理：方案设计与任务拆分",
+      "handoff": {
+        "objective": "把产品需求拆为可验收、可交接的实施方案",
+        "inputs": "本次目标、产品规划、技术约束及授权上下文",
+        "deliverables": "中文方案：用户流程、输入输出、异常边界与带依赖的任务列表",
+        "acceptance": "每项任务含范围、交付物和验收标准，依赖无环，未验证技术明确标记",
+        "failure_handling": "存在冲突或未知条件时列出阻塞及澄清项；只交付方案，不代为执行"
+      },
       "instruction": "设计用户流程、输入输出、异常和边界、验收条件。拆分可独立执行的任务，每项填写 id、title、scope、depends_on、deliverable、acceptance，依赖无环。未知技术能力标为待验证；只登记报告，不自动创建或执行开发任务。",
-      "policy": {
-        "retries": 2,
-        "timeout_seconds": 180,
-        "tool_calls": 10
-      }
+      "policy": {"retries":2}
     }
   }
 }

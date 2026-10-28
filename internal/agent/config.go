@@ -51,10 +51,10 @@ func checkCodexPolicy(ctx context.Context, binary string) error {
 	cmd := exec.CommandContext(ctx, binary, "exec")
 	cmd.Dir = os.Getenv("PANGU_CODEX_HOME")
 	output := diagnostic.Buffer{Limit: 1024}
-	cmd.Stdin, cmd.Stdout, cmd.Env = strings.NewReader(""), &output, append(codexEnvironment(), "PANGU_CODEX_POLICY_PROBE=1")
+	cmd.Stdin, cmd.Stdout, cmd.Env = strings.NewReader(""), &output, append(codexEnvironment(), "PANGU_CODEX_TRACE_PROBE=1")
 	cmd.WaitDelay = time.Second
-	if err := runCodexProcess(ctx, cmd, ""); err != nil || output.Truncated || strings.TrimSpace(output.Data.String()) != "pangu-codex-policy/1" {
-		return errors.New("Codex 必须使用 Pangu 受控构建，普通 CLI 不具备工具次数与单次时限硬限制")
+	if err := runCodexProcess(ctx, cmd, ""); err != nil || output.Truncated || strings.TrimSpace(output.Data.String()) != "pangu-codex-trace/1" {
+		return errors.New("Codex 必须使用 Pangu 受控构建，普通 CLI 不具备完整行为追踪能力")
 	}
 	return nil
 }
@@ -71,7 +71,8 @@ func codexEnvironment() []string {
 }
 
 func codexIsolationArgs(workspace string) []string {
-	args := []string{"--strict-config", "--ignore-rules", "-c", "projects." + strconv.Quote(workspace) + `.trust_level="untrusted"`,
+	// CLI 将键按点分割；目录放在 TOML 值中，避免 .artifacts 等路径被拆开。
+	args := []string{"--strict-config", "--ignore-rules", "-c", "projects={" + strconv.Quote(workspace) + `={trust_level="untrusted"}}`,
 		"-c", `web_search="disabled"`, "-c", "allow_login_shell=false", "-c", "agents.enabled=false", "-c", "notify=[]", "-c", "features.skip_host_skill_discovery=true"}
 	for _, feature := range []string{"apps", "plugins", "remote_plugin", "multi_agent", "multi_agent_v2", "skill_search", "skill_mcp_dependency_install", "image_generation", "hooks"} {
 		args = append(args, "--disable", feature)

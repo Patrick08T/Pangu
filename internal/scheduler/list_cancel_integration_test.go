@@ -34,7 +34,7 @@ func TestHatchetListUsesConfirmedCancellationAndProjectFilter(t *testing.T) {
 	b := scheduler.NewBackend(client)
 	awaitWorker(t, b)
 	p := registerTestProject(t, b)
-	accepted, err := b.Submit(context.Background(), workflow.Definition{ProjectID: p.ID, Nodes: []workflow.Node{{ID: "hold", Executor: "codex", Instruction: "取消后等待停止证据"}}}, "list-cancel")
+	accepted, err := b.Submit(context.Background(), workflow.Definition{ProjectID: p.ID, Nodes: []workflow.Node{{ID: "hold", Executor: "codex", Handoff: testHandoff(), Instruction: "取消后等待停止证据"}}}, "list-cancel")
 	if err != nil {
 		t.Fatal(err)
 	}

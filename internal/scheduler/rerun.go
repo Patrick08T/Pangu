@@ -3,8 +3,10 @@ package scheduler
 import (
 	"context"
 	"errors"
+	"github.com/Patrick08T/Pangu/internal/catalog"
 
 	"github.com/Patrick08T/Pangu/internal/submission"
+	"github.com/Patrick08T/Pangu/internal/workflow"
 	"github.com/Patrick08T/Pangu/internal/workspace"
 )
 
@@ -26,12 +28,18 @@ func (b Backend) Rerun(ctx context.Context, id, key string) (*submission.Record,
 	}
 	snapshot := previous.Snapshot
 	snapshot.SourceRunID = id
+	if snapshot.Fork != nil {
+		snapshot.Fork = &workflow.Fork{OriginCommit: snapshot.Fork.OriginCommit, Commit: snapshot.Fork.OriginCommit}
+	}
 	item, err := submission.FindRerun(ctx, namespace, previous.ProjectID, key, id)
 	if err == nil {
 		return b.dispatch(ctx, item), nil
 	}
 	if !errors.Is(err, submission.ErrNotFound) {
 		return nil, err
+	}
+	if err := snapshot.Workflow.ValidateHandoffs(); err != nil {
+		return nil, errors.Join(catalog.ErrInvalid, err)
 	}
 	expired, err := workspace.Expired(ctx, id)
 	if err != nil {

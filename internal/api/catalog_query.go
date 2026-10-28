@@ -4,8 +4,6 @@ import (
 	"errors"
 	"net/url"
 	"strconv"
-
-	"github.com/google/uuid"
 )
 
 func catalogQuery(values url.Values, versions bool) (int, error) {
@@ -24,12 +22,8 @@ func catalogQuery(values url.Values, versions bool) (int, error) {
 			if err != nil || offset < 0 {
 				return 0, errors.New("offset 必须为非负整数")
 			}
-		case "project_id":
-			if _, err := uuid.Parse(items[0]); err != nil {
-				return 0, errors.New("project_id 必须为 UUID")
-			}
 		case "kind":
-			if items[0] != "template" && items[0] != "agent" && items[0] != "workflow" && items[0] != "connection" {
+			if items[0] != "agent" && items[0] != "workflow" && items[0] != "connection" {
 				return 0, errors.New("kind 无效")
 			}
 		default:

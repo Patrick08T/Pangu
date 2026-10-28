@@ -25,8 +25,8 @@ func TestModelErrorsPreserveRetryClassification(t *testing.T) {
 }
 
 func TestCodexPolicyExitCodesNeverRetry(t *testing.T) {
-	for code, kind := range map[int]string{86: "tool_timeout", 87: "tool_limit"} {
-		err := codexFailure(processExitError(code), "")
+	for code, kind := range map[int]string{88: "trace", 87: "tool_authority"} {
+		err := codexFailure(processExitError(code), 0)
 		if workflow.FailureKind(err) != kind || workflow.CanRetry(err) {
 			t.Fatalf("策略退出码 %d 未终止重试: %v", code, err)
 		}

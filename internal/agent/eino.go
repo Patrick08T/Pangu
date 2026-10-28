@@ -4,15 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/Patrick08T/Pangu/internal/catalog"
 	"github.com/Patrick08T/Pangu/internal/research"
+	"github.com/Patrick08T/Pangu/internal/usage"
 	"github.com/Patrick08T/Pangu/internal/workflow"
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/adk"
+	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 )
 
@@ -20,28 +23,29 @@ func executeEino(ctx context.Context, input workflow.NodeInput) (workflow.NodeOu
 	var session *research.Session
 	if input.Node.Role != "" {
 		var err error
-		session, err = research.New(input)
+		session, err = research.New(input, func(ctx context.Context, query string) ([]research.SearchResult, error) {
+			return codexPublicSearch(ctx, input, query)
+		})
 		if err != nil {
 			return workflow.NodeOutput{}, &workflow.Failure{Kind: "parameter", Cause: err}
 		}
 	}
-	config, err := modelConfig(ctx, input.ProjectID, input.Node)
+	chat, err := einoModel(ctx, input)
 	if err != nil {
 		return workflow.NodeOutput{}, &workflow.Failure{Kind: "configuration", Cause: err}
 	}
-	chat, err := openai.NewChatModel(ctx, config)
-	if err != nil {
-		return workflow.NodeOutput{}, err
-	}
+	chat = &tracedModel{base: chat, name: input.Node.Model}
 	settings := &adk.ChatModelAgentConfig{
 		Name: input.Node.ID, Description: input.Node.Description,
 		Instruction: outputInstruction(input.Node), Model: chat, MaxIterations: 1,
 		GenModelInput: literalInstruction,
 	}
 	if session != nil {
+		settings.Model = session.Model(chat)
 		settings.ToolsConfig = session.Tools()
 		settings.Instruction = session.Instruction() + "\n补充任务要求：" + input.Node.Instruction
-		settings.MaxIterations = input.Node.EffectivePolicy().ToolCalls + 1
+		// shortcut: Eino 必须指定有限迭代数；支持无限迭代后改用原生选项。
+		settings.MaxIterations = math.MaxInt
 	}
 	a, err := adk.NewChatModelAgent(ctx, settings)
 	if err != nil {
@@ -96,22 +100,40 @@ func literalInstruction(_ context.Context, instruction string, input *adk.AgentI
 	return append([]adk.Message{schema.SystemMessage(instruction)}, input.Messages...), nil
 }
 
-func modelConfig(ctx context.Context, project string, node workflow.Node) (*openai.ChatModelConfig, error) {
-	config := &openai.ChatModelConfig{APIKey: os.Getenv("OPENAI_API_KEY"), BaseURL: os.Getenv("OPENAI_BASE_URL"), Model: node.Model, Timeout: 2 * time.Minute}
-	config.Timeout = min(config.Timeout, time.Duration(node.EffectivePolicy().TimeoutSeconds)*time.Second)
-	if node.ConnectionVersion != "" {
-		connection, key, err := catalog.ResolveConnection(ctx, project, node.ConnectionVersion)
+func einoModel(ctx context.Context, input workflow.NodeInput) (model.ToolCallingChatModel, error) {
+	var connection *catalog.Connection
+	var key string
+	if input.Node.ConnectionVersion != "" {
+		var err error
+		connection, key, err = catalog.ResolveConnection(ctx, input.ProjectID, input.Node.ConnectionVersion)
 		if err != nil {
 			return nil, err
 		}
-		if connection.Model != node.Model {
+		if connection.Model != input.Node.Model {
 			return nil, fmt.Errorf("节点模型与连接版本不一致")
 		}
+		if connection.Provider == "codex" {
+			return &codexModel{input: input}, nil
+		}
+	}
+	config, err := modelConfig(input.Node, connection, key)
+	if err != nil {
+		return nil, err
+	}
+	return openai.NewChatModel(ctx, config)
+}
+
+func modelConfig(node workflow.Node, connection *catalog.Connection, key string) (*openai.ChatModelConfig, error) {
+	var price *workflow.Price
+	config := &openai.ChatModelConfig{APIKey: os.Getenv("OPENAI_API_KEY"), BaseURL: os.Getenv("OPENAI_BASE_URL"), Model: node.Model}
+	if connection != nil {
 		config.APIKey, config.BaseURL = key, connection.BaseURL
+		price = connection.Price
 	}
 	if config.APIKey == "" {
 		return nil, fmt.Errorf("模型凭据尚未配置")
 	}
 	config.HTTPClient = &http.Client{Timeout: config.Timeout, Transport: &http.Transport{TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: config.Timeout, MaxResponseHeaderBytes: 64 * 1024, DisableKeepAlives: true}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	config.HTTPClient.Transport = &usage.Transport{Base: config.HTTPClient.Transport, Kind: "model", Model: node.Model, Price: price}
 	return config, nil
 }
