@@ -18,5 +18,5 @@ export function FlowVersions({id,canRun}:{id:string;canRun:boolean}) {
 }
 function FlowPreview({flow}:{flow:Flow}) {
   const {versions}=useVersions(flow),[selected,select]=useState<string>();const step=flow.nodes.find(n=>n.id===selected);
-  return <div className="flow-preview"><FlowCanvas flow={flow} versions={versions} selected={selected} select={select} change={()=>{}} disabled/>{step?<StepPanel step={step} flow={flow} versions={versions} disabled change={()=>{}} copy={()=>{}} remove={()=>{}}/>:<FlowSettings flow={flow} change={()=>{}} disabled/>}</div>;
+  return <div className="flow-preview"><FlowCanvas flow={flow} versions={versions} selected={selected} select={select} change={()=>{}} disabled/>{step?<StepPanel step={step} flow={flow} versions={versions} disabled change={()=>{}} copy={()=>{}} remove={()=>{}}/>:<FlowSettings flow={flow} change={()=>{}} disabled versions={versions}/>}</div>;
 }

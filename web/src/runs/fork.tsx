@@ -3,10 +3,11 @@ import {useAction,useQuery} from '../api/hooks';
 import {APIError,apiRequest} from '../api/request';
 import {ActionNotice,JSONField,QueryState,type Access,type Schema} from '../console/components';
 import {RequestReceipt,receipt} from './submission';
+import {currentNodes} from './loop';
 
 export function ForkRun({run,access}:{run:Schema['RunDetails'];access:Access}) {
  const [open,setOpen]=useState(false),[text,setText]=useState(JSON.stringify(run.definition,null,2));
- const choices=run.nodes.filter(n=>n.executor==='codex'&&n.status==='succeeded');
+ const choices=currentNodes(run.nodes).filter(n=>n.executor==='codex'&&n.status==='succeeded');
  const [checkpoint,setCheckpoint]=useState(choices[0]?.node_id??''),[preview,setPreview]=useState<Schema['ForkPreview']>();
  const [checked,setChecked]=useState(''),[confirmed,setConfirmed]=useState(false),[request,setRequest]=useState('');
  const action=useAction(),check=useAction(),key=useRef(crypto.randomUUID());
@@ -25,9 +26,9 @@ export function ForkRun({run,access}:{run:Schema['RunDetails'];access:Access}) {
   if(action.active())setRequest(receipt(result));
  }
  return <section><button disabled={!choices.length} onClick={()=>setOpen(!open)}>检查点返工</button>{open&&<>
-  <p>创建独立运行，保留原历史。首版只复用串行、无条件的 Codex 成功前缀；已变更节点及其后续重新执行。全局输入改变时全部重做。文件检查点不能撤销模型调用、外部写入等副作用。</p>
+  <p>创建独立运行，保留原历史。复用选中文件检查点之前的串行成功节点及研究报告；条件、输入和定义保持一致，跳过或失败节点不能复用。已变更节点及其后续重新执行，全局输入改变时全部重做。文件检查点不能撤销模型调用、外部写入等副作用。</p>
   {request?<RequestReceipt id={request}/>:<form className="editor" onSubmit={e=>{e.preventDefault();void action.run(submit);}}>
-   <label className="field">来源成功检查点<select value={checkpoint} disabled={disabled} onChange={e=>{setCheckpoint(e.target.value);setConfirmed(false);}}>{choices.map(node=><option key={node.node_id} value={node.node_id}>{node.node_id}</option>)}</select></label>
+   <label className="field">来源成功检查点<select value={checkpoint} disabled={disabled} onChange={e=>{setCheckpoint(e.target.value);setConfirmed(false);}}>{choices.map(node=><option key={node.node_id} value={node.node_id}>{node.node_id}{node.loop_round?` · 第 ${node.loop_round} 轮`:''}</option>)}</select></label>
    <JSONField label="返工定义（JSON）" value={text} disabled={disabled} onChange={value=>{setText(value);setConfirmed(false);}}/>
    <button type="button" disabled={disabled} onClick={()=>void check.run(inspect)}>预览返工范围</button>
    {preview&&checked===fingerprint&&<div className="notice"><p>将复用：{preview.reused_nodes.join('、')||'无'}</p><p>将执行：{preview.execute_nodes.join('、')||'无'}</p><p>全局输入{preview.input_changed?'已变化，旧结果全部失效':'未变化'}</p>

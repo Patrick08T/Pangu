@@ -75,7 +75,7 @@ func TestHatchetFactoryConversationGeneratesThenPublishesOnlyOnConfirmation(t *t
 	if len(session.Turns) != 1 || session.Turns[0].Status != "ready" || session.Turns[0].Reply.Proposal == nil {
 		t.Fatalf("未恢复候选: %+v", session.Turns)
 	}
-	objects, err := catalog.List(context.Background(), backend.Namespace(), "agent", 0)
+	objects, err := catalog.List(context.Background(), backend.Namespace(), "agent", 0, nil)
 	if err != nil || len(objects) != 0 {
 		t.Fatal("预览创建资源", err)
 	}

@@ -86,7 +86,7 @@ func TestDeliveryRequiresVerificationAndApprovalAndKeepsReceipt(t *testing.T) {
 	if w.Code != 201 || json.Unmarshal(w.Body.Bytes(), &draft) != nil {
 		t.Fatalf("创建 %d %s", w.Code, w.Body.String())
 	}
-	if draft.Definition.Nodes[0].Approval == nil || !draft.Definition.Nodes[1].ReadOnly {
+	if draft.Definition.Nodes[1].Approval == nil || !draft.Definition.Nodes[2].ReadOnly || !draft.Definition.Nodes[0].ReadOnly {
 		t.Fatal("丢失人工审批/只读审查")
 	}
 	if w = callAuthorized(h, "POST", "/deliveries/"+draft.ID+"/run", `{"subject_hash":"changed"}`, token); w.Code != 409 {

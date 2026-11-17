@@ -35,7 +35,14 @@ func Reserve(ctx context.Context, kind, model string, price *workflow.Price) (st
 		return "", err
 	}
 	defer tx.Rollback(context.Background())
-	if _, err = tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", "usage:"+s.run); err != nil {
+	runs, err := budgetRuns(ctx, tx, s.run)
+	if err != nil {
+		return "", err
+	}
+	if len(runs) == 0 {
+		return "", errors.New("预算所属运行不存在")
+	}
+	if _, err = tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", "usage:"+runs[0]); err != nil {
 		return "", err
 	}
 	var raw []byte
@@ -58,7 +65,7 @@ func Reserve(ctx context.Context, kind, model string, price *workflow.Price) (st
 		return "", errors.New("用量类型或模型无效")
 	}
 	var count int
-	if err = tx.QueryRow(ctx, "SELECT count(*) FROM pangu.usage_calls WHERE run_id=$1 AND kind=$2", s.run, kind).Scan(&count); err != nil {
+	if err = tx.QueryRow(ctx, "SELECT count(*) FROM pangu.usage_calls WHERE run_id=ANY($1::uuid[]) AND kind=$2", runs, kind).Scan(&count); err != nil {
 		return "", err
 	}
 	if budget != nil && count >= limit {

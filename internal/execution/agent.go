@@ -20,11 +20,11 @@ func Recover(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	conn, err := database.Open(ctx)
+	conn, err := database.Acquire(ctx)
 	if err != nil {
 		return err
 	}
-	defer conn.Close(context.Background())
+	defer conn.Release()
 	rows, err := conn.Query(ctx, `SELECT DISTINCT owner_pid,owner_stamp,process_scope FROM pangu.node_attempts
 		WHERE finished_at IS NULL AND owner_host=$1 AND owner_stamp<>''`, host)
 	if err != nil {

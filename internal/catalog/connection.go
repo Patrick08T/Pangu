@@ -15,7 +15,7 @@ func ResolveConnection(ctx context.Context, project, id string) (*Connection, st
 		return nil, "", err
 	}
 	defer conn.Close(context.Background())
-	item, err := scanVersion(conn.QueryRow(ctx, "SELECT "+versionColumns+" FROM pangu.catalog_versions v JOIN pangu.catalog_objects o ON o.id=v.object_id JOIN pangu.projects p ON p.namespace=o.namespace AND p.id=$2 WHERE v.id=$1 AND o.kind='connection'", id, project))
+	item, err := scanVersion(conn.QueryRow(ctx, "SELECT "+versionColumns+" FROM pangu.catalog_versions v JOIN pangu.catalog_objects o ON o.id=v.object_id JOIN pangu.projects p ON p.namespace=o.namespace AND p.id=$2 WHERE v.id=$1 AND o.kind='connection' AND v.source_kind='manual'", id, project))
 	if err != nil {
 		return nil, "", err
 	}

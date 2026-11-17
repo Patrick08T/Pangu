@@ -14,9 +14,10 @@ type Change struct {
 }
 
 type Fileset struct {
-	Base, Head string
-	Changes    []Change
-	repository string
+	Base, Head    string
+	Changes       []Change
+	repository    string
+	localPerforce bool
 }
 
 func Files(ctx context.Context, id string) (*Fileset, error) {
@@ -27,8 +28,19 @@ func Files(ctx context.Context, id string) (*Fileset, error) {
 	if record.ExpiredAt != nil {
 		return nil, ErrExpired
 	}
+	local, localErr := localArtifactHead(ctx, id)
+	if localErr != nil {
+		return nil, localErr
+	}
+	if local != "" {
+		record.HeadCommit = local
+	}
+	return filesBetween(ctx, record, record.BaseCommit)
+}
+
+func filesBetween(ctx context.Context, record *Run, base string) (*Fileset, error) {
 	root, err := workspaceRoot()
-	if err != nil || !record.Ready || record.WorkerID != WorkerID() || record.Directory != filepath.Join(root, id) {
+	if err != nil || !record.Ready || record.WorkerID != WorkerID() || record.Directory != filepath.Join(root, record.ID) {
 		return nil, errors.New("产物工作区不可用或属于其他 Worker/磁盘")
 	}
 	repo := filepath.Join(record.Directory, "base")
@@ -36,11 +48,14 @@ func Files(ctx context.Context, id string) (*Fileset, error) {
 	if err != nil || !samePath(repo, resolved) {
 		return nil, errors.New("产物基准目录已移动或被替换")
 	}
-	data, err := git(ctx, repo, "diff", "--raw", "-z", "--no-abbrev", "--no-renames", "--no-ext-diff", record.BaseCommit, record.HeadCommit, "--")
+	out, err := newOperationFileset(ctx, record, base, repo)
 	if err != nil {
 		return nil, err
 	}
-	out := &Fileset{Base: record.BaseCommit, Head: record.HeadCommit, repository: repo, Changes: []Change{}}
+	data, err := out.git(ctx, "diff", "--raw", "-z", "--no-abbrev", "--no-renames", "--no-ext-diff", base, record.HeadCommit, "--")
+	if err != nil {
+		return nil, err
+	}
 	if data == "" {
 		return out, nil
 	}
@@ -78,7 +93,7 @@ func (set *Fileset) size(ctx context.Context, object string) (int64, error) {
 	if !commitID.MatchString(object) {
 		return 0, errors.New("Git 对象无效")
 	}
-	value, err := git(ctx, set.repository, "cat-file", "-s", object)
+	value, err := set.git(ctx, "cat-file", "-s", object)
 	if err != nil {
 		return 0, err
 	}
@@ -93,9 +108,9 @@ func (set *Fileset) Blob(ctx context.Context, object string) ([]byte, error) {
 	if size > 10*1024*1024 {
 		return nil, errors.New("文件超过 10 MiB 导出上限")
 	}
-	return gitBytes(ctx, set.repository, nil, "cat-file", "blob", object)
+	return set.bytes(ctx, "cat-file", "blob", object)
 }
 
 func (set *Fileset) Diff(ctx context.Context, path string) ([]byte, bool, error) {
-	return gitOutput(ctx, set.repository, nil, 1024*1024, "diff", "--no-ext-diff", "--no-textconv", "--no-color", set.Base, set.Head, "--", path)
+	return set.output(ctx, 1024*1024, "diff", "--no-ext-diff", "--no-textconv", "--no-color", set.Base, set.Head, "--", path)
 }

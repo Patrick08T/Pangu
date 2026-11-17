@@ -17,23 +17,23 @@ func TestRerunRejectsChunkedOverrides(t *testing.T) {
 	request.Header.Set("Idempotency-Key", "rerun-test")
 	response := httptest.NewRecorder()
 	testAPI(backend).ServeHTTP(response, request)
-	if response.Code != 400 || backend.calls != 0 {
-		t.Fatalf("分块请求绕过原快照限制: %d calls=%d", response.Code, backend.calls)
+	if response.Code != 400 || backend.mutations != 0 {
+		t.Fatalf("分块请求绕过原快照限制: %d mutations=%d", response.Code, backend.mutations)
 	}
 }
 
 func (b *fakeBackend) ListRuns(context.Context, scheduler.RunQuery) (*scheduler.RunList, error) {
-	b.calls++
+	b.readCall()
 	return &scheduler.RunList{Items: []scheduler.RunSummary{}}, b.err
 }
 
 func (b *fakeBackend) CancelRun(context.Context, string) (*scheduler.Cancellation, error) {
-	b.calls++
+	b.mutationCall()
 	return &scheduler.Cancellation{RunID: testID, Requested: true}, b.err
 }
 
 func (b *fakeBackend) Preflight(_ context.Context, definition workflow.Definition) (*workflow.Preflight, error) {
-	b.calls++
+	b.readCall()
 	b.definition = definition
 	return &workflow.Preflight{Ready: true, Checks: []workflow.Check{}}, b.err
 }
@@ -42,7 +42,7 @@ func TestCancellationAcknowledgesRequestOnly(t *testing.T) {
 	backend := &fakeBackend{}
 	response := httptest.NewRecorder()
 	testAPI(backend).ServeHTTP(response, httptest.NewRequest("POST", "/runs/"+testID+"/cancel", nil))
-	if response.Code != 202 || backend.calls != 2 {
+	if response.Code != 202 || backend.mutations != 1 || !strings.Contains(response.Body.String(), `"requested":true`) {
 		t.Fatalf("取消路由: %d %s", response.Code, response.Body.String())
 	}
 }

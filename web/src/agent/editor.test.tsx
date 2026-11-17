@@ -3,7 +3,7 @@ import {AgentStudio} from './editor';
 import type {Access,Schema} from '../console/components';
 
 const access={project:'p',role:'manager',session:{id:'u',csrf:'csrf'}} as Access;
-const item={id:'a',kind:'agent',project_id:'p',name:'产品助手',revision:1,archived:false,created_at:'2026-10-26T00:00:00Z',spec:{agent:{id:'agent',executor:'codex',handoff:{objective:'完成指定任务',inputs:'本次输入',deliverables:'检查报告',acceptance:'说明证据',failure_handling:'报告缺口'},instruction:'原始职责',read_only:true}}} as Schema['CatalogObject'];
+const item={id:'a',kind:'agent',project_id:'p',name:'产品助手',revision:1,archived:false,created_at:'2026-10-26T00:00:00Z',updated_at:'2026-10-26T00:00:00Z',spec:{agent:{id:'agent',executor:'codex',handoff:{objective:'完成指定任务',inputs:'本次输入',deliverables:'检查报告',acceptance:'说明证据',failure_handling:'报告缺口'},instruction:'原始职责',read_only:true}}} as Schema['CatalogObject'];
 afterEach(()=>{cleanup();vi.restoreAllMocks();vi.unstubAllGlobals();});
 
 test('缺少交接契约的草稿可保存，但发布与试运行被阻止',async()=>{

@@ -16,7 +16,7 @@ func TestStructuredOutputRejectsWrongMissingAndExtraFields(t *testing.T) {
 		}
 	}
 	out := NodeOutput{Text: `{"title":"分析","score":2}`}
-	if err := ValidateOutput(node, &out); err != nil || out.Data["title"] != "分析" {
+	if err := ValidateOutput(node, &out); err != nil || out.Text != `{"title":"分析","score":2}` {
 		t.Fatalf("结构化输出: %+v %v", out, err)
 	}
 }
@@ -45,7 +45,7 @@ func TestFieldBindingsOnlyReadDirectParentsAndCheckType(t *testing.T) {
 	}
 	d.Nodes[1].DependsOn = []string{"source"}
 	d.Nodes[1].Bindings["total"] = FieldBinding{From: "source", Pointer: "/missing", Type: "integer"}
-	if _, err := d.BindInput(d.NodeInput(d.Nodes[1], map[string]NodeOutput{"source": {Data: map[string]any{"count": 3.0}}})); err == nil {
+	if _, err := d.BindInput(d.NodeInput(d.Nodes[1], map[string]NodeOutput{"source": {Text: `{"count":3}`}})); err == nil {
 		t.Fatal("缺失字段被自动填充")
 	}
 }
@@ -96,5 +96,49 @@ func TestOutputLimitIncludesAssignedRunID(t *testing.T) {
 	out := NodeOutput{Text: strings.Repeat("a", 16361)}
 	if err := ValidateOutput(Node{ID: "boundary"}, &out); err == nil {
 		t.Fatal("未为最终 RunID 预留输出额度")
+	}
+}
+
+func TestStructuredOutputUsesOneTransportRepresentation(t *testing.T) {
+	shape := &Shape{Type: "object", Properties: map[string]Shape{"summary": {Type: "string"}, "ready": {Type: "boolean"}}, Required: []string{"summary", "ready"}}
+	node := Node{ID: "plan", OutputSchema: shape}
+	for _, summary := range []string{strings.Repeat("中", 3000), strings.Repeat("中", 4000), strings.Repeat("\"\\\n", 700)} {
+		raw, _ := json.MarshalIndent(map[string]any{"summary": summary, "ready": true}, "", "  ")
+		out := NodeOutput{Text: string(raw), RunID: "00000000-0000-0000-0000-000000000001"}
+		for range 2 {
+			if err := ValidateOutput(node, &out); err != nil {
+				t.Fatalf("有效单份输出被拒绝，正文=%d: %v", len(raw), err)
+			}
+		}
+		encoded, err := json.Marshal(out)
+		var fields map[string]json.RawMessage
+		if err != nil || json.Unmarshal(encoded, &fields) != nil || fields["data"] != nil || len(encoded) > 16384 {
+			t.Fatalf("输出重复或超限: %d 字节, %v", len(encoded), err)
+		}
+		var restored NodeOutput
+		if json.Unmarshal(encoded, &restored) != nil || restored.Text != string(raw) || restored.RunID != out.RunID {
+			t.Fatal("输出经过传输后丢失内容或身份")
+		}
+		d := Definition{Nodes: []Node{node, {ID: "build", DependsOn: []string{"plan"},
+			Bindings: map[string]FieldBinding{"summary": {From: "plan", Pointer: "/summary", Type: "string"}},
+			When:     &Condition{Field: FieldBinding{From: "plan", Pointer: "/ready", Type: "boolean"}, Equals: json.RawMessage(`true`)}}}}
+		input := d.NodeInput(d.Nodes[1], map[string]NodeOutput{"plan": restored})
+		bound, err := d.BindInput(input)
+		if err != nil || bound.Parameters["summary"] != summary {
+			t.Fatalf("恢复后的正文无法用于字段映射: %v", err)
+		}
+		if selected, err := d.Selected(input); err != nil || !selected {
+			t.Fatalf("恢复后的正文无法用于条件判断: %v", err)
+		}
+	}
+}
+
+func TestOutputSizeErrorsIdentifyActualLimit(t *testing.T) {
+	for _, raw := range []string{strings.Repeat("a", 16385), strings.Repeat("\"", 9000)} {
+		out := NodeOutput{Text: raw}
+		err := ValidateOutput(Node{ID: "size"}, &out)
+		if err == nil || !strings.Contains(err.Error(), "正文=") || !strings.Contains(err.Error(), "序列化=") || !strings.Contains(err.Error(), "上限=16384") {
+			t.Fatalf("超限错误未给出实际大小: %v", err)
+		}
 	}
 }

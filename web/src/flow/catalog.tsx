@@ -14,11 +14,26 @@ export function useVersions(flow:Flow){
       const item=await apiRequest<Schema['CatalogVersion']>(`/versions/${id}`,{signal:controller.signal});
       if(item.kind!=='agent'||!item.spec.agent)throw Error('版本不是共享 Agent 角色');
       return [id,item] as const;
-    }catch(error){if(controller.signal.aborted)throw error;return [id,undefined] as const;}})).then(items=>{
-      if(!controller.signal.aborted)setState({versions:Object.fromEntries(items.flatMap(([id,v])=>v?[[id,v]]:[])),loading:false});
+    }catch(error){if(controller.signal.aborted)throw error;return [id,undefined] as const;}})).then(async items=>{
+      if(controller.signal.aborted)return;
+      const versions=Object.fromEntries(items.flatMap(([id,v])=>v?[[id,v]]:[]));
+      setState({versions,loading:false});
+      const named=await withAgentNames(versions,controller.signal);
+      if(!controller.signal.aborted)setState({versions:named,loading:false});
     }).catch(()=>{if(!controller.signal.aborted)setState({versions:{},loading:false,error:Error('读取助手版本失败')});});
     return()=>controller.abort();
   },[ids]);return state;
+}
+
+async function withAgentNames(versions:Versions,signal:AbortSignal):Promise<Versions>{
+  const ids=[...new Set(Object.values(versions).map(version=>version.object_id))];
+  const names=Object.fromEntries(await Promise.all(ids.map(async id=>{
+    try{
+      const item=await apiRequest<Schema['CatalogObject']>(`/catalog/${encodeURIComponent(id)}`,{signal});
+      return [id,item.id===id&&item.kind==='agent'?item.name:undefined] as const;
+    }catch(error){if(signal.aborted)throw error;return [id,undefined] as const;}
+  })));
+  return Object.fromEntries(Object.entries(versions).map(([id,version])=>[id,names[version.object_id]?{...version,agentName:names[version.object_id]}:version]));
 }
 
 export function AssistantLibrary({disabled,add}:{disabled:boolean;add:(choice:Schema['RunnableChoicePage']['items'][number])=>void}) {

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Patrick08T/Pangu/internal/catalog"
+	"github.com/Patrick08T/Pangu/internal/research"
 	"github.com/Patrick08T/Pangu/internal/submission"
 	"github.com/Patrick08T/Pangu/internal/workflow"
 	"github.com/Patrick08T/Pangu/internal/workspace"
@@ -46,6 +47,9 @@ func (b Backend) Fork(ctx context.Context, id, key string, input workflow.ForkIn
 	if err != nil {
 		return nil, err
 	}
+	if err = validateForkExperience(ctx, b.Namespace(), previous, snapshot); err != nil {
+		return nil, err
+	}
 	snapshot.Fork.RequestHash = requestHash
 	if err = catalog.CheckDefinition(ctx, b.Namespace(), input.Workflow); err != nil {
 		return nil, err
@@ -78,7 +82,7 @@ func forkSnapshot(ctx context.Context, run *RunDetails, previous *submission.Rec
 		return nil, err
 	}
 	defer release()
-	fork := &workflow.Fork{CheckpointNode: input.CheckpointNode, OriginCommit: source.BaseCommit, Reused: map[string]workflow.NodeOutput{}, Checkpoints: map[string]string{}}
+	fork := &workflow.Fork{CheckpointNode: input.CheckpointNode, OriginCommit: source.BaseCommit, Reused: map[string]workflow.NodeOutput{}, Checkpoints: map[string]string{}, ReportNodes: map[string]bool{}, ReportHashes: map[string]string{}}
 	if previous.Snapshot.Fork != nil {
 		fork.OriginCommit = previous.Snapshot.Fork.OriginCommit
 	}
@@ -92,20 +96,38 @@ func forkSnapshot(ctx context.Context, run *RunDetails, previous *submission.Rec
 		if err != nil {
 			return nil, err
 		}
-		fork.Commit = commit
-		fork.Checkpoints[id] = commit
+		if commit == "" {
+			fork.ReportNodes[id] = true
+			fork.ReportHashes[id] = workflow.ReportHash(out.Reports[0].Markdown)
+		} else {
+			fork.Commit = commit
+		}
+		fork.Checkpoints[id] = fork.Commit
 		fork.Reused[id] = out
 	}
 	return &submission.Snapshot{Workflow: input.Workflow, SourceRunID: run.ID, Fork: fork}, nil
 }
 
 func successfulCheckpoint(ctx context.Context, run *RunDetails, node string) (string, workflow.NodeOutput, error) {
-	for _, item := range run.Nodes {
-		if item.NodeID == node && item.Executor == "codex" && item.Status == "succeeded" {
+	if item, ok := successfulNode(run, node); ok {
+		if item.Executor == "codex" {
 			return workspace.Checkpoint(ctx, run.ID, item.ID)
 		}
+		out, err := research.Checkpoint(ctx, run.ID, item.ID)
+		return "", out, err
 	}
-	return "", workflow.NodeOutput{}, errors.Join(catalog.ErrInvalid, errors.New("选中节点没有成功的 Codex 文件检查点"))
+	return "", workflow.NodeOutput{}, errors.Join(catalog.ErrInvalid, errors.New("复用节点没有当前成功结果"))
+}
+
+func successfulNode(run *RunDetails, node string) (NodeRun, bool) {
+	var latest NodeRun
+	found := false
+	for _, item := range run.Nodes {
+		if item.NodeID == node && currentLoopRound(run, item) && (!found || item.CreatedAt.After(latest.CreatedAt)) {
+			latest, found = item, true
+		}
+	}
+	return latest, found && latest.Status == "succeeded"
 }
 
 func PreviewFork(run *RunDetails, input workflow.ForkInput) ([]string, error) {
@@ -121,14 +143,17 @@ func PreviewFork(run *RunDetails, input workflow.ForkInput) ([]string, error) {
 	if err := input.Workflow.ValidateInput(); err != nil {
 		return nil, errors.Join(catalog.ErrInvalid, err)
 	}
-	for _, node := range run.Nodes {
-		if node.NodeID == input.CheckpointNode && node.Executor == "codex" && node.Status == "succeeded" {
-			ids, err := workflow.Prefix(input.Workflow, *run.Definition, input.CheckpointNode)
-			if err != nil {
-				return nil, errors.Join(catalog.ErrInvalid, err)
-			}
-			return ids, nil
+	if node, ok := successfulNode(run, input.CheckpointNode); ok && node.Executor == "codex" {
+		ids, err := workflow.Prefix(input.Workflow, *run.Definition, input.CheckpointNode)
+		if err != nil {
+			return nil, errors.Join(catalog.ErrInvalid, err)
 		}
+		for _, id := range ids {
+			if _, ok := successfulNode(run, id); !ok {
+				return nil, errors.Join(catalog.ErrInvalid, fmt.Errorf("节点 %s 的最新结果未成功，不能复用", id))
+			}
+		}
+		return ids, nil
 	}
 	return nil, errors.Join(catalog.ErrInvalid, errors.New("选中节点没有成功的 Codex 文件检查点"))
 }

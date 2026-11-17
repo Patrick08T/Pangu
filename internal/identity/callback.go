@@ -53,6 +53,10 @@ func (s Service) callback(w http.ResponseWriter, r *http.Request, cfg Config) {
 		authFailure(w, err)
 		return
 	}
+	s.finishLogin(w, r, cfg, external)
+}
+
+func (s Service) finishLogin(w http.ResponseWriter, r *http.Request, cfg Config, external FeishuUser) {
 	_, token, err := login(r.Context(), s.Namespace, cfg, external)
 	if err != nil {
 		authFailure(w, err)
@@ -64,7 +68,7 @@ func (s Service) callback(w http.ResponseWriter, r *http.Request, cfg Config) {
 			return
 		}
 	}
-	setCookie(w, cfg, "pangu_session", token, 12*60*60)
+	setCookie(w, cfg, "pangu_session", token, sessionLifetimeSeconds)
 	http.Redirect(w, r, cfg.PublicURL+"/", http.StatusSeeOther)
 }
 

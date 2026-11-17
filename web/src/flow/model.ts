@@ -1,15 +1,21 @@
 import type {Schema} from '../console/components';
 import {dagLayers} from '../runs/workflow';
+import {loopIssues} from './loop';
 
 export type Flow=Schema['Flow'];
 export type Step=Schema['FlowBinding'];
-export type Versions=Record<string,Schema['CatalogVersion']>;
+export type AgentVersion=Schema['CatalogVersion']&{agentName?:string};
+export type Versions=Record<string,AgentVersion>;
 export type Issue={id?:string;message:string};
 export const types=['string','number','integer','boolean','object','array','null'] as const;
 export const typeNames:Record<string,string>={string:'文本',number:'数字',integer:'整数',boolean:'是 / 否',object:'对象',array:'列表',null:'空值'};
 export function fieldName(pointer:string){return pointer?pointer.slice(1).split('/').map(token=>token.replaceAll('~1','/').replaceAll('~0','~')).join(' › '):'整个值';}
 export const identifier=/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/;
 export function label(flow:Flow,id:string){return flow.editor?.nodes?.[id]?.name||id;}
+export function agentIdentity(version?:AgentVersion){
+  if(version?.agentName)return `Agent 角色：${version.agentName}`;
+  return version?.spec.agent?`Agent 标识：${version.spec.agent.id}`:'Agent 角色：未读取';
+}
 export function update(flow:Flow,id:string,patch:Partial<Step>):Flow{return {...flow,nodes:flow.nodes.map(node=>node.id===id?{...node,...patch}:node)};}
 export function display(flow:Flow,id:string,patch:Partial<NonNullable<Schema['FlowEditor']['nodes']>[string]>):Flow {
   return {...flow,editor:{...flow.editor,nodes:{...flow.editor?.nodes,[id]:{x:0,y:0,...flow.editor?.nodes?.[id],...patch}}}};
@@ -38,7 +44,7 @@ export function arrange(flow:Flow):Flow {
   return {...flow,editor:{...flow.editor,nodes}};
 }
 export function issues(flow:Flow,versions?:Versions):Issue[] {
-  const out:Issue[]=[];
+  const out:Issue[]=loopIssues(flow,versions);
   if(!flow.nodes.length)out.push({message:'添加至少一个助手步骤后再发布。'});
   try{dagLayers(flow.nodes);}catch(error){out.push({message:(error as Error).message});}
   for(const node of flow.nodes){
@@ -56,7 +62,6 @@ export function issues(flow:Flow,versions?:Versions):Issue[] {
       if(node.when.field.from==='$input'&&!flow.parameters)add('执行条件需要定义流程输入字段');
       const problem=bindingProblem(flow,node,node.when.field,versions);if(problem)add(`执行条件：${problem}`);
     }
-    if(node.approval&&(node.approval.timeout_seconds<1||node.approval.timeout_seconds>3600))add('审批等待时间应为 1–3600 秒');
   }
   return out;
 }

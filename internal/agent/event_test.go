@@ -62,7 +62,7 @@ func TestCodexFatalEventClassificationIgnoresModelAndToolText(t *testing.T) {
 		{`{"type":"turn.failed","error":{"message":"unexpected status 400 Bad Request"}}`, "parameter", false},
 		{`{"type":"turn.failed","error":{"message":"unexpected status 429 Too Many Requests"}}`, "rate_limit", true},
 		{`{"type":"item.completed","item":{"type":"agent_message","text":"unexpected status 401 Unauthorized"}}`, "execution", true},
-		{`{"type":"turn.failed","error":{"message":"unexpected status 500 Internal Server Error"}}`, "execution", true},
+		{`{"type":"turn.failed","error":{"message":"unexpected status 500 Internal Server Error"}}`, "model_unavailable", true},
 		{`{"type":"turn.failed","error":{"message":"{\"type\":\"error\",\"status\":400,\"error\":{\"code\":\"model_not_found\",\"message\":\"unsupported model\"}}"}}`, "parameter", false},
 	} {
 		events := &codexEvents{}

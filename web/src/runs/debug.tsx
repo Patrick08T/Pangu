@@ -4,6 +4,7 @@ import {Pager,QueryState,Status,timestamp,type Schema} from '../console/componen
 import {AttemptDetail} from './execution';
 import {WorkflowGraph,activityText} from './workflow';
 import {TracePanel} from './trace';
+import {currentNodes} from './loop';
 
 export function RunDebugger({run}:{run:Schema['RunDetails']}){
   const [selected,select]=useState<string>();
@@ -12,7 +13,8 @@ export function RunDebugger({run}:{run:Schema['RunDetails']}){
   const position=useRef({x:0,y:0,left:0,top:0});
   const activity=useQuery<Schema['TraceEvent'][]>(run.logs_expired||run.stop_confirmed?null:`/runs/${run.id}/activity`,2000);
   const active=run.logs_expired||run.stop_confirmed||activity.error?[]:(activity.data??[]).filter(event=>run.nodes.some(node=>node.id===event.node_run_id&&node.attempt===event.attempt&&!['succeeded','failed','cancelled','skipped'].includes(node.status)));
-  const node=opened?run.definition?.nodes.find(item=>item.id===selected):undefined,state=run.nodes.find(item=>item.node_id===selected);
+  const current=currentNodes(run.nodes);
+  const node=opened?run.definition?.nodes.find(item=>item.id===selected):undefined,state=current.find(item=>item.node_id===selected);
   useLayoutEffect(()=>{
     if(!selected)return;
     if(opened){window.scrollTo(0,0);return;}
@@ -28,30 +30,35 @@ export function RunDebugger({run}:{run:Schema['RunDetails']}){
   }
   if(!run.definition)return null;
   return <section className="agent-monitor" aria-label="Agent 执行状态"><h2>Agent 执行状态</h2><p className="muted">每张卡片代表一次工作流节点执行。同一角色参与多个阶段时分别展示；点击查看当前活动和执行记录。</p>
-    <p className="agent-progress">共 {run.definition.nodes.length} 个节点 · {run.nodes.filter(n=>n.status==='running').length} 个执行中 · {run.nodes.filter(n=>n.status==='succeeded').length} 个完成 · {run.nodes.filter(n=>n.status==='failed').length} 个失败 · {run.nodes.filter(n=>n.status==='skipped').length} 个跳过</p>
+    <p className="agent-progress">共 {run.definition.nodes.length} 个节点 · {current.filter(n=>n.status==='running').length} 个执行中 · {current.filter(n=>n.status==='succeeded').length} 个完成 · {current.filter(n=>n.status==='failed'&&!n.next_retry_at).length} 个失败 · {current.filter(n=>n.next_retry_at).length} 个等待模型重试 · {current.filter(n=>n.status==='skipped').length} 个跳过</p>
     <QueryState {...activity} retry={activity.reload}/>{activity.error&&<p className="notice">当前活动暂不可用，请勿将旧记录视为仍在执行。</p>}
     <div ref={panel} className="run-debugger"><WorkflowGraph definition={run.definition} nodes={run.nodes} selected={selected} select={open} activities={active} stopped={run.stop_confirmed}/>
       {node&&<NodeDebug key={`${run.id}/${node.id}/${run.logs_expired}`} run={run} node={node} state={state} activity={active.find(event=>event.node_id===node.id)} unavailable={!!activity.error} close={()=>setOpened(false)}/>}
     </div>
   </section>;
 }
-function NodeDebug({run,node,state,activity,unavailable,close}:{run:Schema['RunDetails'];node:Schema['Node'];state?:Schema['NodeRun'];activity?:Schema['TraceEvent'];unavailable:boolean;close:()=>void}){
+function NodeDebug({run,node,state:current,activity,unavailable,close}:{run:Schema['RunDetails'];node:Schema['Node'];state?:Schema['NodeRun'];activity?:Schema['TraceEvent'];unavailable:boolean;close:()=>void}){
+  const [history,setHistory]=useState('');
+  const loop=run.definition?.loops?.find(l=>l.nodes.includes(node.id));
+  const executions=run.nodes.filter(n=>n.node_id===node.id),state=history?executions.find(n=>n.id===history):current;
   const heading=useRef<HTMLHeadingElement>(null);
   useEffect(()=>heading.current?.focus({preventScroll:true}),[]);
-  const input=useQuery<Schema['InputPreview'][]>(run.logs_expired?null:`/runs/${run.id}/inputs`,run.stop_confirmed?0:5000);
+  const input=useQuery<Schema['InputPreview'][]>(run.logs_expired||history?null:`/runs/${run.id}/inputs`,run.stop_confirmed?0:5000);
   const preview=input.data?.find(item=>item.node_id===node.id);
   const labels={ready:'输入已就绪',pending:'等待上游输出',skipped:'条件未命中或依赖已跳过',invalid:'输入错误'};
   return <aside className="node-debug" aria-label="所选节点详情"><div className="section-heading"><button onClick={close}><span aria-hidden="true">← </span>返回任务</button><h3 tabIndex={-1} ref={heading}>Agent · {node.id} {!state&&run.stop_confirmed?<span className="status">未执行</span>:<Status value={state?.status??'queued'}/>}</h3></div>
     <p>{node.executor==='codex'?'原生 Codex':'Eino 助手'}{node.read_only?' · 只读':''}</p>
     {node.description&&<p>{node.description}</p>}
+    {loop&&<label className="field">循环执行记录<select value={history} onChange={e=>setHistory(e.target.value)}><option value="">当前轮次{current?.loop_round?` · 第 ${current.loop_round} 轮`:' · 尚未执行'}</option>{executions.map(n=><option key={n.id} value={n.id}>第 {n.loop_round} 轮 · 模型重试 {n.model_retry??0} · {timestamp(n.created_at)}</option>)}</select></label>}
     {state&&state.status!=='queued'?<p>{timestamp(state.started_at)} 至 {timestamp(state.finished_at)}</p>:<p>尚未开始执行</p>}
     {run.logs_expired?<p className="notice">日志与输入已过保留期，无法查看执行内容。</p>:<>
       {state?.reused_from&&<p className="notice">此节点复用了成功检查点，没有产生新的执行尝试。</p>}
-      <CurrentActivity state={state} activity={activity} stopped={run.stop_confirmed} unavailable={unavailable}/>
-      <TracePanel key={node.id} run={run} nodeID={node.id}/>
+      <CurrentActivity state={state} activity={activity?.node_run_id===state?.id?activity:undefined} stopped={run.stop_confirmed||!!history} unavailable={unavailable}/>
+      {(!loop||state)&&<TracePanel key={state?.id??node.id} run={run} nodeID={node.id} nodeRunID={loop?state?.id:undefined}/>}
       <details><summary>Agent 职责与任务指令</summary><pre>{node.instruction}</pre></details>
-      <h4>节点输入</h4><QueryState {...input} retry={input.reload}/>
+      <h4>节点输入</h4>{history?<p>当前输入预览不代表历史轮次；请查看所选执行的追踪和证据。</p>:<><QueryState {...input} retry={input.reload}/>
       {preview?<><p>{labels[preview.state]}</p>{preview.error&&<p className="error-text">{preview.error}</p>}{preview.state==='ready'&&<pre>{JSON.stringify(preview.parameters,null,2)}</pre>}</>:!input.loading&&!input.error&&<p>尚无可用输入记录。</p>}
+      </>}
       {run.definition?.input&&<details><summary>全局任务输入</summary><pre>{run.definition.input}</pre></details>}
       <h4>输出与错误</h4>{state?.error&&<div className="notice error"><strong>{state.error.category}</strong><pre>{state.error.message}</pre>{state.error.truncated&&<p>诊断已截断。</p>}</div>}
       {state?.output?<pre>{state.output}</pre>:<p className="muted">尚无节点输出。</p>}
@@ -65,6 +72,7 @@ function CurrentActivity({state,activity,stopped,unavailable}:{state?:Schema['No
   let message=state?.status==='running'?'节点执行中，等待下一条模型或工具活动记录。':'等待节点开始执行。';
   if(unavailable)message='当前活动读取失败，暂无法确认。';
   if(terminal)message='该节点当前没有正在执行的操作，可查看下方历史记录。';
+  if(state?.next_retry_at&&!stopped)message=`等待第 ${(state.model_retry??0)+1} 次模型重试，下次重试不早于 ${timestamp(state.next_retry_at)}。`;
   return <section className="current-activity" aria-label="当前活动"><h4>当前正在做什么</h4>
     {activity&&!terminal&&!unavailable?<>
       <strong>{activityText(activity)}</strong><p>开始于 {timestamp(activity.time)} · 已持续 {Math.max(0,Math.floor((Date.now()-Date.parse(activity.time))/1000))} 秒 · 第 {activity.attempt} 次尝试</p>

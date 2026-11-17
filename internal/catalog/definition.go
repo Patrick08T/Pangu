@@ -26,7 +26,7 @@ func CheckDefinition(ctx context.Context, namespace string, d workflow.Definitio
 		if node.AgentVersion == "" {
 			continue
 		}
-		v, err := ReadVersion(ctx, namespace, node.AgentVersion)
+		v, err := ReadVersionScoped(ctx, namespace, node.AgentVersion, VersionScope{ProjectID: d.ProjectID})
 		if err != nil {
 			return err
 		}

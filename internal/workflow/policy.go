@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 )
 
 type Policy struct {
@@ -38,9 +39,6 @@ func FailureKind(err error) string {
 	if err == nil {
 		return ""
 	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		return "timeout"
-	}
 	if errors.Is(err, context.Canceled) {
 		return "cancelled"
 	}
@@ -48,7 +46,23 @@ func FailureKind(err error) string {
 	if errors.As(err, &failure) {
 		return failure.Kind
 	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "timeout"
+	}
 	return "execution"
+}
+
+// ModelRetryCategory 只接受提供方适配层确认的临时模型故障。
+func ModelRetryCategory(kind string) bool {
+	return kind == "model_unavailable" || kind == "model_network" || kind == "rate_limit"
+}
+
+// ModelRetryDelay 的序号从 0 开始；持续重试仍受取消和显式调用预算约束。
+func ModelRetryDelay(sequence int) time.Duration {
+	if sequence < 0 || sequence >= 4 {
+		return 5 * time.Minute
+	}
+	return 30 * time.Second * time.Duration(1<<sequence)
 }
 
 func CanRetry(err error) bool {

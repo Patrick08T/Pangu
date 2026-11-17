@@ -10,17 +10,20 @@ import (
 
 	"github.com/Patrick08T/Pangu/internal/database"
 	"github.com/Patrick08T/Pangu/internal/diagnostic"
+	"github.com/Patrick08T/Pangu/internal/perforce"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
 type Project struct {
-	ID           string   `json:"id"`
-	Name         string   `json:"name"`
-	Source       string   `json:"source"`
-	Branch       string   `json:"branch"`
-	WorkerID     string   `json:"worker_id"`
-	Verification []string `json:"verification"`
+	VCS          string           `json:"vcs"`
+	Perforce     *perforce.Config `json:"perforce,omitempty"`
+	ID           string           `json:"id"`
+	Name         string           `json:"name"`
+	Source       string           `json:"source,omitempty"`
+	Branch       string           `json:"branch,omitempty"`
+	WorkerID     string           `json:"worker_id"`
+	Verification []string         `json:"verification"`
 }
 
 func Register(ctx context.Context, namespace string, project Project) (*Project, error) {
@@ -40,8 +43,9 @@ func Register(ctx context.Context, namespace string, project Project) (*Project,
 		project.Verification = []string{}
 	}
 	command, _ := json.Marshal(project.Verification)
-	_, err = conn.Exec(ctx, `INSERT INTO pangu.projects(id,namespace,name,source,branch,worker_id,verification) VALUES($1,$2,$3,$4,$5,$6,$7)`,
-		project.ID, namespace, project.Name, filepath.Clean(project.Source), project.Branch, project.WorkerID, command)
+	project.Source = filepath.Clean(project.Source)
+	_, err = conn.Exec(ctx, `INSERT INTO pangu.projects(id,namespace,name,source,branch,worker_id,verification,vcs,perforce) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		project.ID, namespace, project.Name, project.Source, project.Branch, project.WorkerID, command, project.VCS, project.Perforce)
 	if err != nil {
 		return nil, errors.New("登记项目失败")
 	}
@@ -49,9 +53,23 @@ func Register(ctx context.Context, namespace string, project Project) (*Project,
 }
 
 func (project Project) Validate() error {
-	if strings.TrimSpace(project.Name) == "" || len(project.Name) > 128 || !filepath.IsAbs(project.Source) ||
-		strings.HasPrefix(project.Source, `\\`) || project.Branch == "" || project.WorkerID == "" || project.ID != "" {
-		return errors.New("项目名称、本地绝对路径、分支和 Worker 标识不能为空，ID 由服务端分配")
+	if strings.TrimSpace(project.Name) == "" || len(project.Name) > 128 || project.WorkerID == "" || project.ID != "" {
+		return errors.New("项目名称和 Worker 标识不能为空；ID 由服务端分配")
+	}
+	switch project.VCS {
+	case "git":
+		if !filepath.IsAbs(project.Source) || strings.HasPrefix(project.Source, `\\`) || project.Branch == "" || project.Perforce != nil {
+			return errors.New("Git 项目需要本地绝对路径和分支，不能混入 Perforce 配置")
+		}
+	case "perforce":
+		if !filepath.IsAbs(project.Source) || strings.HasPrefix(project.Source, `\\`) || strings.ContainsAny(project.Source, "\r\n\x00") || project.Branch != "" || project.Perforce == nil {
+			return errors.New("Perforce 项目必须绑定 Worker 上的本地工作区绝对路径，并提供 P4 配置；不能填写 Git 分支")
+		}
+		if err := project.Perforce.Validate(); err != nil {
+			return err
+		}
+	default:
+		return errors.New("项目来源必须是 git 或 perforce")
 	}
 	if len(project.Verification) > 0 {
 		if len(project.Verification) > 32 || !filepath.IsAbs(project.Verification[0]) {
@@ -72,7 +90,7 @@ func Projects(ctx context.Context, namespace string) ([]Project, error) {
 		return nil, err
 	}
 	defer conn.Close(context.Background())
-	rows, err := conn.Query(ctx, "SELECT id::text,name,source,branch,worker_id,verification FROM pangu.projects WHERE namespace=$1 ORDER BY created_at,id", namespace)
+	rows, err := conn.Query(ctx, "SELECT vcs,perforce,id::text,name,source,branch,worker_id,verification FROM pangu.projects WHERE namespace=$1 ORDER BY created_at,id", namespace)
 	if err != nil {
 		return nil, err
 	}
@@ -90,8 +108,8 @@ func ProjectByID(ctx context.Context, namespace, id string) (*Project, error) {
 	}
 	defer conn.Close(context.Background())
 	project := &Project{}
-	err = conn.QueryRow(ctx, `SELECT id::text,name,source,branch,worker_id,verification FROM pangu.projects WHERE id=$1 AND namespace=$2`, id, namespace).
-		Scan(&project.ID, &project.Name, &project.Source, &project.Branch, &project.WorkerID, &project.Verification)
+	err = conn.QueryRow(ctx, `SELECT vcs,perforce,id::text,name,source,branch,worker_id,verification FROM pangu.projects WHERE id=$1 AND namespace=$2`, id, namespace).
+		Scan(&project.VCS, &project.Perforce, &project.ID, &project.Name, &project.Source, &project.Branch, &project.WorkerID, &project.Verification)
 	if err != nil {
 		return nil, errors.New("项目不存在或不属于当前命名空间")
 	}

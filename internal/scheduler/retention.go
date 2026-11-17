@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-func (b Backend) Retention(ctx context.Context, preview bool) ([]workspace.RetentionItem, error) {
+func (b Backend) retainWorkspaces(ctx context.Context, preview bool) ([]workspace.RetentionItem, error) {
 	items, err := workspace.RetentionCandidates(ctx, b.Namespace())
 	if err != nil {
 		return nil, err
@@ -21,7 +21,7 @@ func (b Backend) Retention(ctx context.Context, preview bool) ([]workspace.Reten
 		item := &items[i]
 		item.Status = "protected"
 		if item.ExpiredAt == nil {
-			run, err := b.GetRun(ctx, item.RunID)
+			run, err := b.retentionRun(ctx, item.RunID, preview)
 			if err != nil || !run.StopConfirmed || run.FinishedAt == nil || run.FinishedAt.After(time.Now().Add(-30*24*time.Hour)) {
 				if !preview {
 					if err := workspace.RetentionChecked(ctx, item.RunID, item.Status); err != nil {
@@ -58,7 +58,17 @@ func (b Backend) Retention(ctx context.Context, preview bool) ([]workspace.Reten
 	return items, err
 }
 
+// Preview never refreshes the scheduler or writes the history cache. Missing
+// retained proof remains protected; execution still requires the live GetRun path.
+func (b Backend) retentionRun(ctx context.Context, id string, preview bool) (*RunDetails, error) {
+	if preview {
+		return b.archivedRun(ctx, id)
+	}
+	return b.GetRun(ctx, id)
+}
+
 func (b Backend) MaintainRetention(ctx context.Context) {
+	state := &experienceMaintenanceState{}
 	ticker := time.NewTicker(time.Hour)
 	defer ticker.Stop()
 	for {
@@ -67,7 +77,7 @@ func (b Backend) MaintainRetention(ctx context.Context) {
 			return
 		case <-ticker.C:
 			check, cancel := context.WithTimeout(ctx, 5*time.Minute)
-			items, err := b.Retention(check, false)
+			items, err := b.retention(check, false, state)
 			cancel()
 			if err != nil {
 				slog.Warn("保留清理未完成，将重试")

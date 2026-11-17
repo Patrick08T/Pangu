@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/Patrick08T/Pangu/internal/usage"
+	"github.com/Patrick08T/Pangu/internal/workflow"
 	"os/exec"
 )
 
@@ -13,5 +14,8 @@ func runCodexUsage(ctx context.Context, cmd *exec.Cmd, scope, model string, even
 		return err
 	}
 	err = runCodexProcess(ctx, cmd, scope)
-	return errors.Join(err, usage.Finish(id, events.Usage, err == nil))
+	if recordErr := usage.Finish(id, events.Usage, err == nil); recordErr != nil {
+		return &workflow.Failure{Kind: "usage", Cause: errors.Join(err, recordErr)}
+	}
+	return err
 }

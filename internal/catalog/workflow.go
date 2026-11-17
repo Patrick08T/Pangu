@@ -31,17 +31,26 @@ type Object struct {
 	Revision  int       `json:"revision"`
 	Archived  bool      `json:"archived"`
 	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type Version struct {
-	ID             string    `json:"id"`
-	ObjectID       string    `json:"object_id"`
-	Kind           string    `json:"kind"`
-	Number         int       `json:"number"`
-	SourceRevision int       `json:"source_revision"`
-	Spec           Spec      `json:"spec"`
-	CreatedAt      time.Time `json:"created_at"`
-	Archived       bool      `json:"archived"`
+	SourceKind       string    `json:"source_kind,omitempty"`
+	ProjectID        string    `json:"project_id,omitempty"`
+	SourceExperiment string    `json:"source_experiment,omitempty"`
+	PublicBaseline   string    `json:"public_baseline,omitempty"`
+	ProjectPrevious  string    `json:"project_previous,omitempty"`
+	ContentHash      string    `json:"content_hash,omitempty"`
+	State            string    `json:"state,omitempty"`
+	Tombstoned       bool      `json:"tombstoned,omitempty"`
+	ID               string    `json:"id"`
+	ObjectID         string    `json:"object_id"`
+	Kind             string    `json:"kind"`
+	Number           int       `json:"number"`
+	SourceRevision   int       `json:"source_revision"`
+	Spec             Spec      `json:"spec"`
+	CreatedAt        time.Time `json:"created_at"`
+	Archived         bool      `json:"archived"`
 }
 
 type Spec struct {
@@ -59,6 +68,7 @@ type Connection struct {
 }
 
 type Flow struct {
+	Loops      []workflow.Loop  `json:"loops,omitempty"`
 	Editor     *FlowEditor      `json:"editor,omitempty"`
 	Budget     *workflow.Budget `json:"budget,omitempty"`
 	Parameters *workflow.Shape  `json:"parameters,omitempty"`
@@ -68,6 +78,7 @@ type Flow struct {
 type Binding struct {
 	Task         string                           `json:"task,omitempty"`
 	OutputSchema *workflow.Shape                  `json:"output_schema,omitempty"`
+	ReportSchema *workflow.Shape                  `json:"report_schema,omitempty"`
 	ReadOnly     bool                             `json:"read_only,omitempty"`
 	When         *workflow.Condition              `json:"when,omitempty"`
 	Approval     *workflow.Approval               `json:"approval,omitempty"`

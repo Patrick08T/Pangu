@@ -39,7 +39,7 @@ func TestFactoryAPIPersistsAndRetriesOneGenerationWithoutCreatingAgents(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	before, err := catalog.List(ctx, "api-test", "agent", 0)
+	before, err := catalog.List(ctx, "api-test", "agent", 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func TestFactoryAPIPersistsAndRetriesOneGenerationWithoutCreatingAgents(t *testi
 	if w.Code != 200 || !strings.Contains(w.Body.String(), in.ID) {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	rows, err := catalog.List(ctx, "api-test", "agent", 0)
+	rows, err := catalog.List(ctx, "api-test", "agent", 0, nil)
 	if err != nil || len(rows) != len(before) {
 		t.Fatal("生成阶段提前创建资源", err)
 	}

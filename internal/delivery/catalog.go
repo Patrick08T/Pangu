@@ -47,12 +47,13 @@ func Build(id, source, project string, input CreateInput, report research.Detail
 		return nil, err
 	}
 	impl, check := *implementation.Spec.Agent, *review.Spec.Agent
+	plan := approvalPlan(check)
 	impl.ID, impl.AgentVersion = "implementation", implementation.ID
-	if impl.Approval == nil {
-		impl.Approval = &workflow.Approval{TimeoutSeconds: 3600}
-	}
+	impl.DependsOn = []string{plan.ID}
+	impl.Approval = &workflow.Approval{SourceNode: plan.ID, RevisionNodes: []string{plan.ID}}
 	check.ID, check.AgentVersion, check.DependsOn = "review", review.ID, []string{"implementation"}
-	d := &workflow.Definition{ProjectID: project, Input: string(payload), Nodes: []workflow.Node{impl, check}}
+	check.DependsOn = append(check.DependsOn, plan.ID)
+	d := &workflow.Definition{ProjectID: project, Input: string(payload), Nodes: []workflow.Node{plan, impl, check}}
 	data, err := json.Marshal(d)
 	if err != nil || len(data) > 256*1024 {
 		return nil, ErrInvalid

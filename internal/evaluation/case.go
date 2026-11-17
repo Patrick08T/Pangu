@@ -35,12 +35,16 @@ type Case struct {
 	ExpiresAt      time.Time `json:"expires_at"`
 }
 
+const hiddenCase = `EXISTS(SELECT 1 FROM pangu.evaluation_case_allocations a
+ WHERE a.namespace=evaluation_cases.namespace AND a.project_id=evaluation_cases.project_id
+ AND a.input_hash=evaluation_cases.input_hash AND a.partition<>'development')`
+const unavailableCase = `archived OR expires_at<=now() OR ` + hiddenCase
 const caseColumns = `id::text,project_id::text,actor_id::text,
- CASE WHEN archived OR expires_at<=now() THEN '' ELSE name END,
- CASE WHEN archived OR expires_at<=now() THEN '' ELSE input END,
- CASE WHEN archived OR expires_at<=now() THEN '' ELSE expected END,
- CASE WHEN archived OR expires_at<=now() THEN '[]'::jsonb ELSE criteria END,
- archived OR expires_at<=now(),created_at,expires_at`
+ CASE WHEN ` + unavailableCase + ` THEN '' ELSE name END,
+ CASE WHEN ` + unavailableCase + ` THEN '' ELSE input END,
+ CASE WHEN ` + unavailableCase + ` THEN '' ELSE expected END,
+ CASE WHEN ` + unavailableCase + ` THEN '[]'::jsonb ELSE criteria END,
+ ` + unavailableCase + `,created_at,expires_at`
 
 func (input CaseInput) Validate() error {
 	if !input.RetainInput || len(input.Name) > 128 || strings.TrimSpace(input.Name) == "" || len(input.Input) > 16384 || len(input.Expected) > 8192 || strings.TrimSpace(input.Expected) == "" || len(input.Criteria) < 1 || len(input.Criteria) > 20 {

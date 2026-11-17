@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -33,14 +34,23 @@ func CodexModels(ctx context.Context) ([]workflow.ModelChoice, error) {
 	return codexModelChoices([]byte(output.Data.String()))
 }
 
+type bundledModel struct {
+	Slug             string `json:"slug"`
+	Name             string `json:"display_name"`
+	Visibility       string `json:"visibility"`
+	Priority         int    `json:"priority"`
+	DefaultReasoning string `json:"default_reasoning_level"`
+	Reasoning        []struct {
+		Effort string `json:"effort"`
+	} `json:"supported_reasoning_levels"`
+	Tiers []struct {
+		ID string `json:"id"`
+	} `json:"service_tiers"`
+}
+
 func codexModelChoices(raw []byte) ([]workflow.ModelChoice, error) {
 	var catalog struct {
-		Models []struct {
-			Slug       string `json:"slug"`
-			Name       string `json:"display_name"`
-			Visibility string `json:"visibility"`
-			Priority   int    `json:"priority"`
-		} `json:"models"`
+		Models []bundledModel `json:"models"`
 	}
 	if err := json.Unmarshal(raw, &catalog); err != nil || catalog.Models == nil || len(catalog.Models) > 512 {
 		return nil, errors.New("Codex 模型目录格式无效")
@@ -67,7 +77,30 @@ func codexModelChoices(raw []byte) ([]workflow.ModelChoice, error) {
 		if len(name) > 256 || strings.ContainsAny(name, "\r\n\x00") {
 			return nil, errors.New("Codex 模型名称无效")
 		}
-		items = append(items, workflow.ModelChoice{ID: model.Slug, Name: name})
+		item, err := modelCapabilities(model, name)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
 	}
 	return items, nil
+}
+
+func modelCapabilities(model bundledModel, name string) (workflow.ModelChoice, error) {
+	item := workflow.ModelChoice{ID: model.Slug, Name: name, DefaultReasoning: model.DefaultReasoning}
+	for _, level := range model.Reasoning {
+		if !workflow.ReasoningEffortValid(level.Effort) {
+			return item, errors.New("模型目录中的推理强度无效")
+		}
+		if !slices.Contains(item.ReasoningLevels, level.Effort) {
+			item.ReasoningLevels = append(item.ReasoningLevels, level.Effort)
+		}
+	}
+	if item.DefaultReasoning != "" && !slices.Contains(item.ReasoningLevels, item.DefaultReasoning) {
+		return item, errors.New("模型默认推理强度不在支持列表中")
+	}
+	for _, tier := range model.Tiers {
+		item.Fast = item.Fast || tier.ID == "priority"
+	}
+	return item, nil
 }

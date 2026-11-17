@@ -1,0 +1,292 @@
+{
+  "name": "Bug 修复与独立验收循环",
+  "agents": [
+    {
+      "key": "discover",
+      "name": "Bug 发现",
+      "node": {
+        "id": "discover",
+        "executor": "codex",
+        "description": "Bug 发现角色",
+        "instruction": "从用户目标、当前代码和 iteration.feedback 定位本轮缺陷。读取失败节点原始证据，区分已确认问题与假设，报告范围、触发条件和待验证项。只读，不撤销已有补丁。",
+        "read_only": true,
+        "policy": {
+          "retries": 0
+        },
+        "handoff": {
+          "objective": "Bug 发现并提供可核验证据",
+          "inputs": "原始任务、当前工作区、直接上游输出、iteration.feedback 和平台证据索引",
+          "deliverables": "本阶段结论、复现与变更证据及下一角色需要的上下文",
+          "acceptance": "在授权范围完成本阶段，不丢弃已有有效修复",
+          "failure_handling": "如实报告阻碍和证据，不越权、不绕过验收、不自行循环"
+        }
+      }
+    },
+    {
+      "key": "reproduce",
+      "name": "Bug 复现",
+      "node": {
+        "id": "reproduce",
+        "executor": "codex",
+        "description": "Bug 复现角色",
+        "instruction": "依据发现结论补齐最小复现与回归测试，执行并记录预期失败、命令和实际退出码。允许添加测试，不扩大生产代码修改；保留前轮有效测试和补丁。",
+        "read_only": false,
+        "policy": {
+          "retries": 0
+        },
+        "handoff": {
+          "objective": "Bug 复现并提供可核验证据",
+          "inputs": "原始任务、当前工作区、直接上游输出、iteration.feedback 和平台证据索引",
+          "deliverables": "本阶段结论、复现与变更证据及下一角色需要的上下文",
+          "acceptance": "在授权范围完成本阶段，不丢弃已有有效修复",
+          "failure_handling": "如实报告阻碍和证据，不越权、不绕过验收、不自行循环"
+        }
+      }
+    },
+    {
+      "key": "fix",
+      "name": "Bug 修复",
+      "node": {
+        "id": "fix",
+        "executor": "codex",
+        "description": "Bug 修复角色",
+        "instruction": "依据复现及上一轮反馈实施最小修复，遵守项目 AGENTS.md，保留有效已有改动。仅处理明确缺陷和必要测试，记录变更理由与验证命令；不提交或推送远端。",
+        "read_only": false,
+        "policy": {
+          "retries": 0
+        },
+        "handoff": {
+          "objective": "Bug 修复并提供可核验证据",
+          "inputs": "原始任务、当前工作区、直接上游输出、iteration.feedback 和平台证据索引",
+          "deliverables": "本阶段结论、复现与变更证据及下一角色需要的上下文",
+          "acceptance": "在授权范围完成本阶段，不丢弃已有有效修复",
+          "failure_handling": "如实报告阻碍和证据，不越权、不绕过验收、不自行循环"
+        }
+      }
+    },
+    {
+      "key": "selftest",
+      "name": "修复自测",
+      "node": {
+        "id": "selftest",
+        "executor": "codex",
+        "description": "修复自测角色",
+        "instruction": "独立运行复现用例、针对性单测与必要回归，核对当前补丁。只读，不修复代码。必须提供实际命令和结果；未通过或证据不足返回 passed:false，summary 指明下一轮需要解决的问题。",
+        "read_only": true,
+        "policy": {
+          "retries": 0
+        },
+        "handoff": {
+          "objective": "修复自测并提供可核验证据",
+          "inputs": "原始任务、当前工作区、直接上游输出、iteration.feedback 和平台证据索引",
+          "deliverables": "结构化 passed、summary、details 检查报告",
+          "acceptance": "实际核验当前代码；结论和原始证据一致，不用旧轮次替代",
+          "failure_handling": "质量不满足返回 passed:false；平台会在当前补丁基础上开始下一轮。工具或模型异常如实报告，不伪造通过。"
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "passed": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "passed",
+            "summary"
+          ]
+        },
+        "report_schema": {
+          "type": "object",
+          "properties": {
+            "passed": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "details": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "passed",
+            "summary",
+            "details"
+          ]
+        }
+      }
+    },
+    {
+      "key": "review",
+      "name": "OCR 代码审查",
+      "node": {
+        "id": "review",
+        "executor": "codex",
+        "description": "OCR 代码审查角色",
+        "instruction": "先读取已安装的 open-code-review-delegate/SKILL.md，执行 ocr delegate preview --from <revision.origin_commit> --to <revision.head_commit> 与 ocr delegate rule，按解析规则逐文件审查累计补丁，补充默认排除的必要测试。不能用干净工作区的空差异冒充审查。若有 revision.review_repository，OCR 使用 --repo，Git diff/show 使用 git -C 指向该只读外部快照仓库，完整上下文用 git show <revision.head_commit>:<path>；不要 checkout 或读过时快照工作树。报告 total/reviewed/skipped/coverage、各级发现和依据。只读，不使用 ocr review/scan，不需要额外模型端点。严重问题、关键遗漏或工具不可用时 passed:false；必要文件审查完整且无阻断问题才 true。",
+        "read_only": true,
+        "policy": {
+          "retries": 0
+        },
+        "handoff": {
+          "objective": "OCR 代码审查并提供可核验证据",
+          "inputs": "原始任务、当前工作区、直接上游输出、iteration.feedback 和平台证据索引",
+          "deliverables": "结构化 passed、summary、details 检查报告",
+          "acceptance": "实际核验当前代码；结论和原始证据一致，不用旧轮次替代",
+          "failure_handling": "质量不满足返回 passed:false；平台会在当前补丁基础上开始下一轮。工具或模型异常如实报告，不伪造通过。"
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "passed": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "passed",
+            "summary"
+          ]
+        },
+        "report_schema": {
+          "type": "object",
+          "properties": {
+            "passed": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "details": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "passed",
+            "summary",
+            "details"
+          ]
+        }
+      }
+    },
+    {
+      "key": "qa",
+      "name": "独立 QA 验证",
+      "node": {
+        "id": "qa",
+        "executor": "codex",
+        "description": "独立 QA 验证角色",
+        "instruction": "独立按照用户目标核验完整修复、复现用例和必要回归，读取本轮自测与 OCR 报告并实际验证关键行为。只读，不能用前一轮结论替代当前验收，不能仅复述上游成功。全部满足返回 passed:true，否则 false；details 记录证据、限制与遗留问题。",
+        "read_only": true,
+        "policy": {
+          "retries": 0
+        },
+        "handoff": {
+          "objective": "独立 QA 验证并提供可核验证据",
+          "inputs": "原始任务、当前工作区、直接上游输出、iteration.feedback 和平台证据索引",
+          "deliverables": "结构化 passed、summary、details 检查报告",
+          "acceptance": "实际核验当前代码；结论和原始证据一致，不用旧轮次替代",
+          "failure_handling": "质量不满足返回 passed:false；平台会在当前补丁基础上开始下一轮。工具或模型异常如实报告，不伪造通过。"
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "passed": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "passed",
+            "summary"
+          ]
+        },
+        "report_schema": {
+          "type": "object",
+          "properties": {
+            "passed": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "details": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "passed",
+            "summary",
+            "details"
+          ]
+        }
+      }
+    }
+  ],
+  "steps": [
+    {
+      "id": "discover",
+      "agent": "discover"
+    },
+    {
+      "id": "reproduce",
+      "agent": "reproduce",
+      "depends_on": [
+        "discover"
+      ]
+    },
+    {
+      "id": "fix",
+      "agent": "fix",
+      "depends_on": [
+        "reproduce"
+      ]
+    },
+    {
+      "id": "selftest",
+      "agent": "selftest",
+      "depends_on": [
+        "fix"
+      ]
+    },
+    {
+      "id": "review",
+      "agent": "review",
+      "depends_on": [
+        "selftest"
+      ]
+    },
+    {
+      "id": "qa",
+      "agent": "qa",
+      "depends_on": [
+        "review"
+      ]
+    }
+  ],
+  "loops": [
+    {
+      "id": "bugfix",
+      "nodes": [
+        "discover",
+        "reproduce",
+        "fix",
+        "selftest",
+        "review",
+        "qa"
+      ],
+      "gates": [
+        "selftest",
+        "review",
+        "qa"
+      ]
+    }
+  ]
+}

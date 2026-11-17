@@ -4,8 +4,9 @@ import {templates} from '../catalog/templates';
 import {ShapeFields} from '../flow/shape';
 import {engine,changeEngine,modeNames,policy,type Agent,type Draft} from './model';
 import type {Schema} from '../console/components';
-import {CodexModelPicker} from './codex';
+import {CodexModelPicker,EinoModelOptions} from './codex';
 import {HandoffFields} from './handoff';
+import {ApprovalConfiguration} from '../approval/configuration';
 
 const sections=['职责与说明','模型与执行','工具与资料','重试与权限','输出格式','交接契约'];
 export function AgentConfiguration({value,change,disabled,editable}:{value:Draft;change:(value:Draft)=>void;disabled:boolean;editable:boolean}){
@@ -41,7 +42,7 @@ function AgentEngine({node,change,disabled,editable}:{node:Agent;change:(node:Ag
   function select(next:string){if(window.confirm('切换执行方式会清除不适用的模型连接、角色和文件权限；职责、输出和审批要求保留。继续？'))change(changeEngine(node,next));}
   return <><label className="field">执行方式<select value={engine(node)} onChange={e=>select(e.target.value)}><option value="product_manager">Eino 产品经理</option><option value="eino">Eino 通用助手</option><option value="codex">原生 Codex</option></select></label>
     {node.role==='product_manager'&&<label className="field">产品能力<select value={node.mode} onChange={e=>change({...node,mode:e.target.value as Agent['mode']})}>{Object.entries(modeNames).map(([key,name])=><option key={key} value={key}>{name}</option>)}</select></label>}
-    {node.executor==='eino'?<>{editable?<ConnectionPicker value={node.connection_version??''} change={(id,model)=>change({...node,connection_version:id,model})} disabled={disabled}/>:<p>固定连接：{node.connection_version||'尚未选择'} · 模型：{node.model||'连接默认模型'}</p>}<p className="muted">选择已发布的共享连接。Codex 账号连接共用 Worker 登录；工具与资料权限由 Eino 管理。</p></>:<><CodexModelPicker value={node.model??''} change={model=>change({...node,model})} disabled={disabled} editable={editable}/><p>使用 Worker 专用 Codex 登录；项目文件在独立工作区执行。</p></>}
+    {node.executor==='eino'?<>{editable?<ConnectionPicker value={node.connection_version??''} change={(id,model)=>change({...node,connection_version:id,model})} disabled={disabled}/>:<p>固定连接：{node.connection_version||'尚未选择'} · 模型：{node.model||'连接默认模型'}</p>}<EinoModelOptions value={node} change={change} disabled={disabled} editable={editable}/><p className="muted">选择已发布的共享连接。Codex 账号连接共用 Worker 登录；工具与资料权限由 Eino 管理。</p></>:<><CodexModelPicker value={node} change={change} disabled={disabled} editable={editable}/><p>使用 Worker 专用 Codex 登录；项目文件在独立工作区执行。</p></>}
   </>;
 }
 function AgentPolicy({node,change}:{node:Agent;change:(node:Agent)=>void}){
@@ -50,8 +51,8 @@ function AgentPolicy({node,change}:{node:Agent;change:(node:Agent)=>void}){
     <label className="field">失败最多重试次数<input type="number" min={0} max={2} step={1} value={value.retries} onChange={e=>change({...node,policy:{...value,retries:Number(e.target.value)}})}/></label>
     {node.executor==='codex'&&<label className="field">项目文件权限<select value={node.read_only?'read':'write'} onChange={e=>change({...node,read_only:e.target.value==='read'})}><option value="read">只读项目</option><option value="write">允许在独立项目工作区内读写</option></select></label>}
     <p className="muted">运行没有业务执行时限；可在任务详情暂停后续节点或主动取消。失败重试可能增加模型消耗。文件产物由团队审查采纳。</p>
-    <label className="check"><input type="checkbox" checked={!!node.approval} onChange={e=>change({...node,approval:e.target.checked?{timeout_seconds:300}:undefined})}/>执行前需要人工审批</label>
-    {node.approval&&<label className="field">审批等待上限（秒）<input type="number" min={1} max={3600} value={node.approval.timeout_seconds} onChange={e=>change({...node,approval:{...node.approval!,timeout_seconds:Number(e.target.value)}})}/></label>}
+    <label className="check"><input type="checkbox" checked={!!node.approval} onChange={e=>change({...node,approval:e.target.checked?{source_node:'',revision_nodes:[]}:undefined})}/>执行前需要人工审批</label>
+    {node.approval&&<ApprovalConfiguration value={node.approval} change={approval=>change({...node,approval})}/>}
   </>;
 }
 function AgentCapabilities({node}:{node:Agent}){

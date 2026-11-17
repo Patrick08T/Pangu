@@ -26,7 +26,7 @@ func TestReplyRejectsMalformedAndUnrequestedChanges(t *testing.T) {
 func TestGeneratorIsRestrictedAndLoadsBuiltinSkill(t *testing.T) {
 	s := Session{ProjectID: uuid.NewString()}
 	in := Input{ID: uuid.NewString(), Revision: 1, Message: "创建一个产品经理", Mode: "build", ConnectionVersion: uuid.NewString()}
-	d, digest, err := Definition(s, in, Context{})
+	d, digest, err := Definition(s, in, Context{Connections: []catalog.ConnectionChoice{{ID: in.ConnectionVersion, Provider: "codex"}}})
 	if err != nil {
 		t.Fatal(err)
 	}

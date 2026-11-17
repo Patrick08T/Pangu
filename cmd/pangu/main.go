@@ -39,7 +39,10 @@ func run(mode string, port int) error {
 		return fmt.Errorf("无效运行模式 %q", mode)
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancel()
+	defer func() {
+		cancel()
+		database.ClosePool()
+	}()
 	if mode == "migrate" {
 		return database.Migrate(ctx)
 	}

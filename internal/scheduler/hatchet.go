@@ -9,6 +9,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/Patrick08T/Pangu/internal/execution"
+	"github.com/Patrick08T/Pangu/internal/submission"
 	"github.com/Patrick08T/Pangu/internal/workflow"
 	"github.com/Patrick08T/Pangu/internal/workspace"
 	"github.com/google/uuid"
@@ -41,16 +43,25 @@ func NewBackend(client *hatchet.Client) Backend {
 func NewWorker(client *hatchet.Client, execute func(context.Context, workflow.NodeInput) (workflow.NodeOutput, error), inspect func(context.Context, workflow.Definition) workflow.Preflight) (*hatchet.Worker, error) {
 	preflight := client.NewStandaloneTask(PreflightTaskName, func(ctx hatchet.Context, input preflightInput) (workflow.Preflight, error) {
 		return inspectProject(ctx.GetContext(), client.NewWorkflow(WorkflowName).GetName(), input, inspect(ctx.GetContext(), input.Workflow)), nil
-	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(8*time.Second), hatchet.WithScheduleTimeout(8*time.Second))
+	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(20*time.Second), hatchet.WithScheduleTimeout(8*time.Second))
 	run := func(ctx hatchet.Context, input workflow.NodeInput) (workflow.NodeOutput, error) {
-		return runAgent(ctx, execute, input)
+		return runAgent(ctx, client.NewWorkflow(WorkflowName).GetName(), execute, input)
 	}
 	node := client.NewStandaloneTask(NodeTaskName, run,
 		hatchet.WithRetries(2), hatchet.WithRetryBackoff(2, 30), hatchet.WithExecutionTimeout(engineHorizon), hatchet.WithScheduleTimeout(engineHorizon))
 	codex := client.NewStandaloneTask(CodexTaskName, run,
 		hatchet.WithRetries(2), hatchet.WithRetryBackoff(2, 30), hatchet.WithExecutionTimeout(engineHorizon), hatchet.WithScheduleTimeout(engineHorizon))
 	root := client.NewStandaloneDurableTask(WorkflowName, func(ctx hatchet.DurableContext, input runInput) (map[string]workflow.NodeOutput, error) {
-		d := input.Workflow
+		runtime, err := loadRootExperience(ctx.GetContext(), client.NewWorkflow(WorkflowName).GetName(), ctx.WorkflowRunId(), input)
+		if err != nil {
+			return nil, hatchet.NewNonRetryableError(err)
+		}
+		d := runtime.request.Snapshot.Workflow
+		if input.Fork != nil {
+			if err := runtime.ValidateFork(ctx.GetContext()); err != nil {
+				return nil, hatchet.NewNonRetryableError(err)
+			}
+		}
 		if d.ProjectID != "" {
 			if err := prepareWorkspace(ctx.GetContext(), ctx.WorkflowRunId(), client.NewWorkflow(WorkflowName).GetName(), input); err != nil {
 				return nil, hatchet.NewNonRetryableError(err)
@@ -59,23 +70,44 @@ func NewWorker(client *hatchet.Client, execute func(context.Context, workflow.No
 		var reused map[string]workflow.NodeOutput
 		if input.Fork != nil {
 			var err error
-			reused, err = workspace.ImportCheckpoints(ctx.GetContext(), ctx.WorkflowRunId(), input.Fork)
+			reused, err = runtime.ImportFork(ctx.GetContext())
 			if err != nil {
 				return nil, hatchet.NewNonRetryableError(err)
 			}
 		}
-		return workflow.RunFrom(d, reused, func(inputs []workflow.NodeInput) ([]workflow.NodeOutput, error) {
-			if err := waitApprovals(ctx, client, input.RequestID, inputs); err != nil {
-				return nil, err
-			}
-			return runLayer(ctx, node, codex, inputs)
-		})
+		execute := func(inputs []workflow.NodeInput) ([]workflow.NodeOutput, error) {
+			return runtime.Execute(ctx.GetContext(), inputs, func(prepared []workflow.NodeInput) ([]workflow.NodeOutput, error) {
+				return runLayer(ctx, client, node, codex, prepared)
+			})
+		}
+		before := func(next *workflow.NodeInput, outputs map[string]workflow.NodeOutput) error {
+			return waitApproval(ctx, client, input.RequestID, d, next, outputs, execute)
+		}
+		return runtime.Run(ctx.GetContext(), d, reused, before, execute)
 	}, hatchet.WithRetries(2), hatchet.WithExecutionTimeout(engineHorizon), hatchet.WithScheduleTimeout(engineHorizon), hatchet.WithWorkflowIdempotency(hatchet.IdempotencyConfig{Expression: "input.request_id", TTL: 90 * 24 * time.Hour, Method: hatchet.IdempotencyMethodTTL}))
 	cron := newCronTrigger(client)
-	return client.NewWorker("pangu-worker", hatchet.WithWorkflows(node, codex, root, preflight, cron, newModelChoices(client)), hatchet.WithSlots(16), hatchet.WithDurableSlots(8))
+	return client.NewWorker("pangu-worker", hatchet.WithWorkflows(node, codex, root, preflight, cron, newModelChoices(client), newPerforceTask(client), NewEvolutionTask(client)), hatchet.WithSlots(16), hatchet.WithDurableSlots(8))
 }
 
 func prepareWorkspace(ctx context.Context, id, namespace string, input runInput) error {
+	if input.RequestID != "" {
+		item, err := submission.Get(ctx, namespace, input.RequestID)
+		if err != nil {
+			return err
+		}
+		if item.Operation == "rebuild" {
+			return workspace.EnsureRebuild(ctx, id, item.ProjectID, namespace, item.Snapshot.SourceRunID)
+		}
+	}
+	if input.ApprovalOrigin != "" {
+		cancelled, err := execution.CancelRequested(ctx, input.SourceRunID)
+		if err != nil {
+			return err
+		}
+		if cancelled {
+			return execution.ErrCancelled
+		}
+	}
 	if input.Fork != nil {
 		return workspace.EnsureFork(ctx, id, input.Workflow.ProjectID, namespace, input.SourceRunID, input.Fork.Commit)
 	}
@@ -85,47 +117,64 @@ func prepareWorkspace(ctx context.Context, id, namespace string, input runInput)
 	return workspace.Ensure(ctx, id, input.Workflow.ProjectID, namespace)
 }
 
-func runLayer(ctx hatchet.DurableContext, eino, codex *hatchet.StandaloneTask, inputs []workflow.NodeInput) ([]workflow.NodeOutput, error) {
+func runLayer(ctx hatchet.DurableContext, client *hatchet.Client, eino, codex *hatchet.StandaloneTask, inputs []workflow.NodeInput) ([]workflow.NodeOutput, error) {
 	for _, input := range inputs {
 		if err := validateNodeInput(input); err != nil {
 			return nil, err
 		}
 	}
-	refs := make([]*hatchet.WorkflowRunRef, 0, len(inputs))
-	names := make([]string, len(inputs))
+	jobs := make([]*nodeDispatch, 0, len(inputs))
 	var failures []error
 	for i, input := range inputs {
-		if err := waitNode(ctx.GetContext(), ctx.WorkflowRunId(), input.Node.ID); err != nil {
-			failures = append(failures, err)
-			break
-		}
-		task := eino
-		names[i] = NodeTaskName
+		job := &nodeDispatch{input: input, task: eino, name: NodeTaskName, namespace: client.NewWorkflow(WorkflowName).GetName(), index: i}
 		if input.Node.Executor == "codex" {
-			task, names[i] = codex, CodexTaskName
+			job.task, job.name = codex, CodexTaskName
 		}
 		// 保留 DurableContext；逐个派生避免整层输入超过单条 gRPC 消息限制。
-		ref, err := task.RunNoWait(ctx, input, hatchet.WithRunKey(input.Node.ID),
-			hatchet.WithRunMetadata(map[string]string{"pangu_node_id": input.Node.ID, "pangu_executor": input.Node.Executor}))
-		if err != nil {
+		if err := dispatchNode(ctx, job); err != nil {
 			failures = append(failures, err)
 			break
 		}
-		refs = append(refs, ref)
+		jobs = append(jobs, job)
 	}
-	outputs := make([]workflow.NodeOutput, len(refs))
-	for i := range refs {
-		result, err := refs[i].Result()
-		if err != nil {
-			failures = append(failures, fmt.Errorf("节点 %s: %w", inputs[i].Node.ID, err))
-			continue
-		}
-		if err := result.TaskOutput(names[i]).Into(&outputs[i]); err != nil {
+	outputs := make([]workflow.NodeOutput, len(jobs))
+	for _, job := range jobs {
+		if err := collectNode(ctx, job, outputs); err != nil {
 			failures = append(failures, err)
 		}
-		outputs[i].RunID = refs[i].RunId
 	}
-	return outputs, errors.Join(failures...)
+	if len(failures) > 0 {
+		return outputs, errors.Join(failures...)
+	}
+	if err := retryNodes(ctx, jobs, outputs); err != nil {
+		return outputs, err
+	}
+	return outputs, finishDispatchedLayer(inputs, jobs, func() error {
+		return resolveEvidence(ctx, client, jobs, outputs)
+	})
+}
+
+func nodeRunIdentity(input workflow.NodeInput) (string, map[string]string) {
+	key := input.Node.ID
+	metadata := map[string]string{"pangu_node_id": input.Node.ID, "pangu_executor": input.Node.Executor}
+	if input.ApprovalGeneration > 1 {
+		key = fmt.Sprintf("%s-generation-%d", key, input.ApprovalGeneration)
+		metadata["pangu_approval_generation"] = fmt.Sprint(input.ApprovalGeneration)
+	}
+	if it := input.Iteration; it != nil {
+		key = fmt.Sprintf("%s-loop-%s-%d", key, it.ID, it.Round)
+		metadata["pangu_loop_id"], metadata["pangu_loop_round"] = it.ID, fmt.Sprint(it.Round)
+	}
+	if f := input.ReviewFeedback; f != nil {
+		key = fmt.Sprintf("%s-review-%s-%d", key, f.NodeID, f.Round)
+		metadata["pangu_review_round"] = fmt.Sprint(f.Round)
+		metadata["pangu_review_node"] = f.NodeID
+	}
+	if r := input.EvidenceRetry; r != nil {
+		key = fmt.Sprintf("%s-evidence-%s", key, r.ApprovalID)
+		metadata["pangu_evidence_round"] = fmt.Sprint(r.Round)
+	}
+	return key, metadata
 }
 
 func validateNodeInput(input workflow.NodeInput) error {
@@ -225,23 +274,28 @@ func childRuns(ctx context.Context, run *rest.V1WorkflowRunDetails) ([]rest.V1Ta
 	if err != nil {
 		return nil, err
 	}
-	limit := int64(33)
+	limit := int64(100)
 	parent := run.Tasks[0].TaskExternalId
 	includePayloads := true
-	response, err := api.V1WorkflowRunListWithResponse(ctx, tenant, &rest.V1WorkflowRunListParams{
-		Since: run.Run.Metadata.CreatedAt.Add(-time.Second), Limit: &limit,
-		ParentTaskExternalId: &parent, IncludePayloads: &includePayloads,
-	})
-	if err != nil {
-		return nil, err
-	}
-	if response.JSON200 == nil {
-		return nil, fmt.Errorf("查询子节点失败: HTTP %d", response.StatusCode())
-	}
-	// Hatchet 的 OnlyTasks 路径忽略父任务筛选，使用工作流查询并仅保留直接子任务。
-	for _, node := range response.JSON200.Rows {
-		if node.ParentTaskExternalId != nil && *node.ParentTaskExternalId == parent {
-			out = append(out, node)
+	for offset := int64(0); ; offset += limit {
+		response, err := api.V1WorkflowRunListWithResponse(ctx, tenant, &rest.V1WorkflowRunListParams{
+			Since: run.Run.Metadata.CreatedAt.Add(-time.Second), Limit: &limit, Offset: &offset,
+			ParentTaskExternalId: &parent, IncludePayloads: &includePayloads,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if response.JSON200 == nil {
+			return nil, fmt.Errorf("查询子节点失败: HTTP %d", response.StatusCode())
+		}
+		// Hatchet 的 OnlyTasks 路径忽略父任务筛选，使用工作流查询并仅保留直接子任务。
+		for _, node := range response.JSON200.Rows {
+			if node.ParentTaskExternalId != nil && *node.ParentTaskExternalId == parent {
+				out = append(out, node)
+			}
+		}
+		if len(response.JSON200.Rows) < int(limit) {
+			break
 		}
 	}
 	return out, nil

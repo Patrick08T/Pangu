@@ -8,6 +8,7 @@ import (
 )
 
 func (h handler) catalogRoutes(mux *http.ServeMux) {
+	h.scopedCatalogRoutes(mux)
 	mux.HandleFunc("GET /models/codex", h.codexModels)
 	mux.HandleFunc("POST /catalog/{id}/draft/preflight", h.draftPreflight)
 	mux.HandleFunc("POST /catalog/{id}/trials", h.agentTrials)
@@ -38,7 +39,12 @@ func (h handler) listCatalog(w http.ResponseWriter, r *http.Request) {
 		problem(w, 400, err.Error())
 		return
 	}
-	items, err := catalog.List(r.Context(), h.backend.Namespace(), r.URL.Query().Get("kind"), offset)
+	var archived *bool
+	if value := r.URL.Query().Get("archived"); value != "" {
+		flag := value == "true"
+		archived = &flag
+	}
+	items, err := catalog.List(r.Context(), h.backend.Namespace(), r.URL.Query().Get("kind"), offset, archived)
 	if backendError(w, err) {
 		return
 	}

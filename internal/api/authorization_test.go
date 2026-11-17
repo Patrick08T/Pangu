@@ -45,7 +45,7 @@ func authorizationAPI(t *testing.T) (http.Handler, string, string, string, strin
 	defer conn.Close(ctx)
 	ns, project, other, user := uuid.NewString(), uuid.NewString(), uuid.NewString(), uuid.NewString()
 	for _, id := range []string{project, other} {
-		_, err = conn.Exec(ctx, `INSERT INTO pangu.projects(id,namespace,name,source,branch,worker_id) VALUES($1,$2,'test','test','main','worker')`, id, ns)
+		_, err = conn.Exec(ctx, `INSERT INTO pangu.projects(vcs,id,namespace,name,source,branch,worker_id) VALUES('git',$1,$2,'test','test','main','worker')`, id, ns)
 		if err != nil {
 			t.Fatal(err)
 		}

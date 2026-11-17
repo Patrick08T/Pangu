@@ -54,6 +54,9 @@ func bindReceipt(ctx context.Context, conn *pgx.Conn, id, run string) error {
 		return err
 	}
 	defer tx.Rollback(context.Background())
+	if err = inheritCancellation(ctx, tx, id, run); err != nil {
+		return err
+	}
 	// 与清理互斥，避免迟到回执在清理事务之后重新关联完整正文。
 	if _, err = tx.Exec(ctx, "SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))", "retention:"+run); err != nil {
 		return err
@@ -69,12 +72,28 @@ func bindReceipt(ctx context.Context, conn *pgx.Conn, id, run string) error {
 	return tx.Commit(ctx)
 }
 
+func inheritCancellation(ctx context.Context, tx pgx.Tx, request, run string) error {
+	var parent string
+	err := tx.QueryRow(ctx, `SELECT a.run_id::text FROM pangu.plan_continuations c JOIN pangu.approvals a ON a.id=c.approval_id WHERE c.request_id=$1`, request).Scan(&parent)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", parent); err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO pangu.run_cancellations(run_id,namespace) SELECT $1,namespace FROM pangu.run_cancellations WHERE run_id=$2 ON CONFLICT(run_id)DO NOTHING`, run, parent)
+	return err
+}
+
 func Pending(ctx context.Context, namespace string) ([]string, error) {
-	conn, err := database.Open(ctx)
+	conn, err := database.Acquire(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close(context.Background())
+	defer conn.Release()
 	rows, err := conn.Query(ctx, `SELECT id::text FROM pangu.submissions WHERE namespace=$1 AND run_id IS NULL
 		AND created_at>now()-interval '89 days' ORDER BY last_checked_at,created_at LIMIT 100`, namespace)
 	if err != nil {

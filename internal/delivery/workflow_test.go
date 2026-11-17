@@ -23,7 +23,7 @@ func TestDeliveryPreservesSelectedScopeAndRequiresReadOnlyReview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(d.Nodes) != 2 || d.Nodes[0].Approval == nil || !d.Nodes[1].ReadOnly || len(d.Nodes[1].DependsOn) != 1 {
+	if len(d.Nodes) != 3 || !d.Nodes[0].ReadOnly || d.Nodes[1].Approval == nil || !d.Nodes[2].ReadOnly || len(d.Nodes[2].DependsOn) != 2 {
 		t.Fatalf("审批/只读审查未闭环: %+v", d)
 	}
 	var payload struct {

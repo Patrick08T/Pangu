@@ -29,7 +29,7 @@ func submissionProject(t *testing.T) string {
 	}
 	defer conn.Close(ctx)
 	id := uuid.NewString()
-	_, err = conn.Exec(ctx, `INSERT INTO pangu.projects(id,namespace,name,source,branch,worker_id) VALUES($1,'submission-test','幂等测试','unused','main','test')`, id)
+	_, err = conn.Exec(ctx, `INSERT INTO pangu.projects(vcs,id,namespace,name,source,branch,worker_id) VALUES('git',$1,'submission-test','幂等测试','unused','main','test')`, id)
 	if err != nil {
 		t.Fatal(err)
 	}

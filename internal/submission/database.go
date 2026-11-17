@@ -24,10 +24,14 @@ var ErrExpired = errors.New("提交记录已超出安全重试窗口，禁止重
 var keyPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,128}$`)
 
 type Snapshot struct {
-	Fork        *workflow.Fork      `json:"fork,omitempty"`
-	Workflow    workflow.Definition `json:"workflow"`
-	CreatedBy   string              `json:"created_by,omitempty"`
-	SourceRunID string              `json:"source_run_id,omitempty"`
+	EntryKey       string              `json:"entry_key,omitempty"`
+	EntryRevision  int64               `json:"entry_revision,omitempty"`
+	Purpose        string              `json:"purpose,omitempty"`
+	Fork           *workflow.Fork      `json:"fork,omitempty"`
+	Workflow       workflow.Definition `json:"workflow"`
+	CreatedBy      string              `json:"created_by,omitempty"`
+	SourceRunID    string              `json:"source_run_id,omitempty"`
+	ApprovalOrigin string              `json:"approval_origin,omitempty"`
 }
 
 type Record struct {
@@ -47,7 +51,7 @@ const columns = `id::text,project_id::text,operation,coalesce(run_id::text,''),c
 func ValidKey(key string) bool { return keyPattern.MatchString(key) }
 
 func PublicKey(key string) bool {
-	return ValidKey(key) && !strings.HasPrefix(key, "delivery:") && !strings.HasPrefix(key, "eval:") && !strings.HasPrefix(key, "trial:") && !strings.HasPrefix(key, "factory:")
+	return ValidKey(key) && !strings.HasPrefix(key, "delivery:") && !strings.HasPrefix(key, "eval:") && !strings.HasPrefix(key, "trial:") && !strings.HasPrefix(key, "factory:") && !strings.HasPrefix(key, "plan:")
 }
 
 func digest(value []byte) string {
@@ -61,7 +65,16 @@ func Prepare(ctx context.Context, namespace, operation, key string, snapshot Sna
 		return nil, err
 	}
 	defer conn.Close(context.Background())
-	return prepare(ctx, conn, namespace, operation, key, snapshot)
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(context.Background())
+	item, err := prepare(ctx, tx, namespace, operation, key, snapshot)
+	if err != nil {
+		return nil, err
+	}
+	return item, tx.Commit(ctx)
 }
 
 type writer interface {
@@ -73,12 +86,15 @@ func PrepareTx(ctx context.Context, tx pgx.Tx, namespace, operation, key string,
 	return prepare(ctx, tx, namespace, operation, key, snapshot)
 }
 
-func prepare(ctx context.Context, conn writer, namespace, operation, key string, snapshot Snapshot) (*Record, error) {
+func prepare(ctx context.Context, conn pgx.Tx, namespace, operation, key string, snapshot Snapshot) (*Record, error) {
 	if !ValidKey(key) || namespace == "" || operation == "" {
 		return nil, errors.New("提交作用域或幂等键无效")
 	}
 	if _, err := uuid.Parse(snapshot.Workflow.ProjectID); err != nil {
 		return nil, errors.New("提交必须绑定项目")
+	}
+	if err := identity.Lock(ctx, conn, namespace); err != nil {
+		return nil, err
 	}
 	if actor := identity.Current(ctx); actor.ID != "" {
 		snapshot.CreatedBy = actor.ID
@@ -93,7 +109,14 @@ func prepare(ctx context.Context, conn writer, namespace, operation, key string,
 	if err != nil {
 		return nil, err
 	}
-	return find(ctx, conn, namespace, operation, key, snapshot.Workflow.ProjectID, digest(data))
+	item, err := find(ctx, conn, namespace, operation, key, snapshot.Workflow.ProjectID, digest(data))
+	if err != nil {
+		return nil, err
+	}
+	if err = freezeAcceptedExperience(ctx, conn, namespace, item); err != nil {
+		return nil, err
+	}
+	return item, nil
 }
 
 func Find(ctx context.Context, namespace, operation, key string, snapshot Snapshot) (*Record, error) {

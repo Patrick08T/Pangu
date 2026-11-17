@@ -2,6 +2,7 @@ package approval
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"github.com/Patrick08T/Pangu/internal/database"
 	"github.com/Patrick08T/Pangu/internal/identity"
@@ -30,7 +31,7 @@ func approvalFixture(t *testing.T) (identity.Actor, string, string, string) {
 	defer conn.Close(ctx)
 	actor := identity.Actor{ID: uuid.NewString(), Namespace: uuid.NewString()}
 	project, run := uuid.NewString(), uuid.NewString()
-	_, err = conn.Exec(ctx, `INSERT INTO pangu.projects(id,namespace,name,source,branch,worker_id) VALUES($1,$2,'审批测试','unused','main','test')`, project, actor.Namespace)
+	_, err = conn.Exec(ctx, `INSERT INTO pangu.projects(vcs,id,namespace,name,source,branch,worker_id) VALUES('git',$1,$2,'审批测试','unused','main','test')`, project, actor.Namespace)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +39,7 @@ func approvalFixture(t *testing.T) (identity.Actor, string, string, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := workflow.Definition{ProjectID: project, Input: "方案", Nodes: []workflow.Node{{ID: "build", Executor: "codex", Instruction: "实施", Approval: &workflow.Approval{TimeoutSeconds: 600}}}}
+	d := workflow.Definition{ProjectID: project, Input: "方案", Nodes: []workflow.Node{{ID: "build", Executor: "codex", Instruction: "实施", Approval: &workflow.Approval{}}}}
 	request, err := submission.Prepare(identity.WithActor(ctx, actor), actor.Namespace, "submit", "test", submission.Snapshot{Workflow: d})
 	if err != nil {
 		t.Fatal(err)
@@ -53,7 +54,7 @@ func approvalFixture(t *testing.T) (identity.Actor, string, string, string) {
 func TestApprovalBindsSubjectAndConsumesOnce(t *testing.T) {
 	actor, project, run, request := approvalFixture(t)
 	ctx := context.Background()
-	input := workflow.NodeInput{ProjectID: project, Node: workflow.Node{ID: "build", Executor: "codex", Instruction: "实施", Approval: &workflow.Approval{TimeoutSeconds: 600}}, Input: "方案"}
+	input := structuredInput(project, "方案")
 	gate, err := Request(ctx, actor.Namespace, request, run, input)
 	if err != nil {
 		t.Fatal(err)
@@ -61,7 +62,7 @@ func TestApprovalBindsSubjectAndConsumesOnce(t *testing.T) {
 	if err = Consume(ctx, run, input, gate.ID); !errors.Is(err, ErrConflict) {
 		t.Fatalf("未批准执行: %v", err)
 	}
-	decision := Decision{SubjectHash: strings.Repeat("a", 64), Decision: "approved", Reason: "方案已核对"}
+	decision := Decision{SubjectHash: strings.Repeat("a", 64), Decision: "approved", Items: acceptedItems()}
 	if _, err = Decide(ctx, actor, gate.ID, decision); !errors.Is(err, ErrConflict) {
 		t.Fatalf("接受错误摘要: %v", err)
 	}
@@ -90,6 +91,7 @@ func TestApprovalBindsSubjectAndConsumesOnce(t *testing.T) {
 		t.Fatalf("新尝试越过已批准检查点: %v", err)
 	}
 	decision.Decision = "revoked"
+	decision.Reason = "撤回"
 	if _, err = Decide(ctx, actor, gate.ID, decision); !errors.Is(err, ErrConflict) {
 		t.Fatalf("已执行批准被撤回: %v", err)
 	}
@@ -99,15 +101,55 @@ func TestApprovalBindsSubjectAndConsumesOnce(t *testing.T) {
 	}
 }
 
-func TestApprovalExpiryAndRevocationBlockConsumption(t *testing.T) {
+func TestApprovalPreservesStructuredParentAcrossTransport(t *testing.T) {
 	actor, project, run, request := approvalFixture(t)
 	ctx := context.Background()
-	input := workflow.NodeInput{ProjectID: project, Node: workflow.Node{ID: "build", Executor: "codex", Instruction: "实施", Approval: &workflow.Approval{TimeoutSeconds: 600}}}
+	raw, _ := json.Marshal(map[string]any{"ready": true, "summary": strings.Repeat("批准范围", 750)})
+	parent := workflow.NodeOutput{Text: string(raw), RunID: uuid.NewString()}
+	shape := &workflow.Shape{Type: "object", Properties: map[string]workflow.Shape{"ready": {Type: "boolean"}, "summary": {Type: "string"}}}
+	if err := workflow.ValidateOutput(workflow.Node{ID: "plan", OutputSchema: shape}, &parent); err != nil {
+		t.Fatal(err)
+	}
+	parent.Text = withReview(parent.Text)
+	input := workflow.NodeInput{ProjectID: project, Node: workflow.Node{ID: "build", Executor: "codex", Instruction: "实施",
+		DependsOn: []string{"plan"}, Approval: &workflow.Approval{SourceNode: "plan", RevisionNodes: []string{"plan"}}}, Parents: map[string]workflow.NodeOutput{"plan": parent}}
 	gate, err := Request(ctx, actor.Namespace, request, run, input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	decision := Decision{SubjectHash: gate.SubjectHash, Decision: "approved", Reason: "核验通过"}
+	encoded, _ := json.Marshal(input)
+	var restored workflow.NodeInput
+	if json.Unmarshal(encoded, &restored) != nil || restored.Parents["plan"].Text != parent.Text {
+		t.Fatal("审批内容在传输后丢失")
+	}
+	repeated, err := Request(ctx, actor.Namespace, request, run, restored)
+	if err != nil || repeated.ID != gate.ID || repeated.SubjectHash != gate.SubjectHash {
+		t.Fatalf("恢复后审批主体变化: %v", err)
+	}
+	if _, err = Decide(ctx, actor, gate.ID, Decision{SubjectHash: gate.SubjectHash, Decision: "approved", Items: acceptedItems()}); err != nil {
+		t.Fatal(err)
+	}
+	changed := parent
+	changed.Text = `{"ready":true,"summary":"未批准的范围"}`
+	restored.Parents["plan"] = changed
+	if err = Consume(ctx, run, restored, gate.ID); !errors.Is(err, ErrConflict) {
+		t.Fatalf("修改后的上游计划越过批准: %v", err)
+	}
+	restored.Parents["plan"] = parent
+	if err = Consume(ctx, run, restored, gate.ID); err != nil {
+		t.Fatalf("原批准内容不能恢复消费: %v", err)
+	}
+}
+
+func TestApprovalRevocationBlocksConsumption(t *testing.T) {
+	actor, project, run, request := approvalFixture(t)
+	ctx := context.Background()
+	input := structuredInput(project, "方案")
+	gate, err := Request(ctx, actor.Namespace, request, run, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decision := Decision{SubjectHash: gate.SubjectHash, Decision: "approved", Items: acceptedItems()}
 	if _, err = Decide(ctx, actor, gate.ID, decision); err != nil {
 		t.Fatal(err)
 	}
@@ -125,13 +167,17 @@ func TestApprovalExpiryAndRevocationBlockConsumption(t *testing.T) {
 	if _, err = conn.Exec(ctx, "UPDATE pangu.users SET disabled=false WHERE id=$1", actor.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = conn.Exec(ctx, "UPDATE pangu.approvals SET expires_at=now()-interval '1 second' WHERE id=$1", gate.ID); err != nil {
+	decision.Decision = "revoked"
+	decision.Reason = "撤回"
+	if _, err = Decide(ctx, actor, gate.ID, decision); err != nil {
 		t.Fatal(err)
 	}
-	if err = Consume(ctx, run, input, gate.ID); !errors.Is(err, ErrExpired) {
-		t.Fatalf("过期仍执行: %v", err)
+	if err = Consume(ctx, run, input, gate.ID); !errors.Is(err, ErrConflict) {
+		t.Fatalf("撤回后仍执行: %v", err)
 	}
-	if _, err = Decide(ctx, actor, gate.ID, decision); !errors.Is(err, ErrExpired) {
-		t.Fatalf("过期重放仍批准: %v", err)
+	decision.Decision = "approved"
+	decision.Reason = ""
+	if _, err = Decide(ctx, actor, gate.ID, decision); !errors.Is(err, ErrConflict) {
+		t.Fatalf("重放恢复已撤回的批准: %v", err)
 	}
 }

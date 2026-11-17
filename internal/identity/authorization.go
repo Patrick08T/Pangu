@@ -2,10 +2,12 @@ package identity
 
 import (
 	"context"
+	"errors"
 	"slices"
 
 	"github.com/Patrick08T/Pangu/internal/audit"
 	"github.com/Patrick08T/Pangu/internal/database"
+	"github.com/jackc/pgx/v5"
 )
 
 type actorKey struct{}
@@ -38,8 +40,11 @@ func Authorize(ctx context.Context, actor Actor, project, action, owner string) 
  ELSE EXISTS(SELECT 1 FROM pangu.projects p WHERE p.id=nullif($3,'')::uuid AND p.namespace=u.namespace) END,
  coalesce((SELECT m.role FROM pangu.memberships m WHERE m.user_id=u.id AND m.project_id=nullif($3,'')::uuid AND m.enabled),'')
  FROM pangu.users u WHERE u.id=$1 AND u.namespace=$2 AND NOT u.disabled`, actor.ID, actor.Namespace, project).Scan(&admin, &exists, &role)
-	if err != nil {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrForbidden
+	}
+	if err != nil {
+		return err
 	}
 	if project == "" {
 		if action == "read_catalog" {

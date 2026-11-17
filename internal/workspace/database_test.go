@@ -24,7 +24,7 @@ func TestRegisteredProjectPersistsIsolatedRunAndCheckpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	source, _ := sourceRepository(t)
-	project, err := Register(ctx, "test", Project{Name: "演练", Source: source, Branch: "main", WorkerID: "test-worker"})
+	project, err := Register(ctx, "test", Project{VCS: "git", Name: "演练", Source: source, Branch: "main", WorkerID: "test-worker"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestCancelIntentPreventsCheckpointPublication(t *testing.T) {
 		t.Fatal(err)
 	}
 	source, _ := sourceRepository(t)
-	project, err := Register(ctx, "cancel", Project{Name: "取消竞争", Source: source, Branch: "main", WorkerID: "cancel-worker"})
+	project, err := Register(ctx, "cancel", Project{VCS: "git", Name: "取消竞争", Source: source, Branch: "main", WorkerID: "cancel-worker"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +116,7 @@ func TestRerunUsesOriginalBaseInsteadOfSourceBranchOrPreviousResult(t *testing.T
 		t.Fatal(err)
 	}
 	source, base := sourceRepository(t)
-	project, err := Register(ctx, "rerun", Project{Name: "重跑", Source: source, Branch: "main", WorkerID: "rerun-worker"})
+	project, err := Register(ctx, "rerun", Project{VCS: "git", Name: "重跑", Source: source, Branch: "main", WorkerID: "rerun-worker"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -28,6 +28,9 @@ func checkOptimization(ctx context.Context, ns string, in Input, b *catalog.Bund
 		return invalid("优化须更新选定工作流")
 	}
 	before, after := target.Spec.Flow.Budget, b.Budget
+	if !reflect.DeepEqual(target.Spec.Flow.Loops, b.Loops) {
+		return invalid("优化不能改变循环范围或验收门槛；请使用修改模式")
+	}
 	if before != nil && (after == nil || after.ModelCalls > before.ModelCalls || after.SearchCalls > before.SearchCalls || after.CodexSessions > before.CodexSessions) {
 		return invalid("优化不能扩大运行预算")
 	}

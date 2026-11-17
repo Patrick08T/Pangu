@@ -15,14 +15,16 @@ import (
 )
 
 type RunSummary struct {
-	Title      string     `json:"title,omitempty"`
-	ProjectID  string     `json:"project_id,omitempty"`
-	CreatedBy  string     `json:"created_by,omitempty"`
-	ID         string     `json:"id"`
-	Status     string     `json:"status"`
-	CreatedAt  time.Time  `json:"created_at"`
-	StartedAt  *time.Time `json:"started_at,omitempty"`
-	FinishedAt *time.Time `json:"finished_at,omitempty"`
+	Purpose    string            `json:"-"`
+	Outcome    *workflow.Outcome `json:"outcome,omitempty"`
+	Title      string            `json:"title,omitempty"`
+	ProjectID  string            `json:"project_id,omitempty"`
+	CreatedBy  string            `json:"created_by,omitempty"`
+	ID         string            `json:"id"`
+	Status     string            `json:"status"`
+	CreatedAt  time.Time         `json:"created_at"`
+	StartedAt  *time.Time        `json:"started_at,omitempty"`
+	FinishedAt *time.Time        `json:"finished_at,omitempty"`
 }
 
 type RunError struct {
@@ -32,7 +34,13 @@ type RunError struct {
 }
 
 type NodeRun struct {
-	ReusedFrom string `json:"reused_from,omitempty"`
+	LoopID      string               `json:"loop_id,omitempty"`
+	LoopRound   int                  `json:"loop_round,omitempty"`
+	Result      *workflow.NodeOutput `json:"-"`
+	ModelRetry  int                  `json:"model_retry,omitempty"`
+	NextRetryAt *time.Time           `json:"next_retry_at,omitempty"`
+	ReviewRound int                  `json:"review_round,omitempty"`
+	ReusedFrom  string               `json:"reused_from,omitempty"`
 	RunSummary
 	NodeID   string    `json:"node_id"`
 	TaskID   string    `json:"task_id"`
@@ -86,7 +94,7 @@ func ParseRunQuery(values url.Values, now time.Time) (RunQuery, error) {
 			q.Limit, err = strconv.ParseInt(value, 10, 64)
 		case "status":
 			q.Status = value
-			if hatchetStatus(value) == "" && value != "cancelling" {
+			if hatchetStatus(value) == "" && value != "cancelling" && value != "waiting_approval" && value != "revising_plan" {
 				err = errors.New("不支持的运行状态")
 			}
 		case "since":
@@ -140,13 +148,21 @@ func nodeRun(row rest.V1TaskSummary) NodeRun {
 	if row.AdditionalMetadata != nil {
 		out.NodeID, _ = (*row.AdditionalMetadata)["pangu_node_id"].(string)
 		out.Executor, _ = (*row.AdditionalMetadata)["pangu_executor"].(string)
+		round, _ := (*row.AdditionalMetadata)["pangu_review_round"].(string)
+		out.ReviewRound, _ = strconv.Atoi(round)
+		retry, _ := (*row.AdditionalMetadata)["pangu_model_retry"].(string)
+		out.ModelRetry, _ = strconv.Atoi(retry)
+		out.LoopID, _ = (*row.AdditionalMetadata)["pangu_loop_id"].(string)
+		iteration, _ := (*row.AdditionalMetadata)["pangu_loop_round"].(string)
+		out.LoopRound, _ = strconv.Atoi(iteration)
 	}
 	output, _ := json.Marshal(row.Output)
 	var result workflow.NodeOutput
 	if json.Unmarshal(output, &result) == nil {
 		out.Output, _ = diagnostic.Text(result.Text, 16*1024)
+		out.Result = &result
 	}
-	out.Error = runError(row.ErrorMessage)
+	out.Error = stateError(out.Status, row.ErrorMessage)
 	return out
 }
 
@@ -173,6 +189,14 @@ func runError(value *string) *RunError {
 	}
 	message, truncated := diagnostic.Text(*value, 64*1024)
 	return &RunError{Category: "execution", Message: message, Truncated: truncated}
+}
+
+// Hatchet 重试或 replay 后可能保留旧 ErrorMessage；仅失败终态展示当前错误。
+func stateError(status string, value *string) *RunError {
+	if status != "failed" && status != "cancelled" {
+		return nil
+	}
+	return runError(value)
 }
 
 func runEvent(row rest.V1TaskEvent) RunEvent {

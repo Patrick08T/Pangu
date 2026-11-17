@@ -10,7 +10,6 @@ import (
 
 	"github.com/Patrick08T/Pangu/internal/database"
 	"github.com/Patrick08T/Pangu/internal/identity"
-	"github.com/Patrick08T/Pangu/internal/submission"
 	"github.com/Patrick08T/Pangu/internal/workflow"
 	"github.com/google/uuid"
 )
@@ -31,20 +30,13 @@ func evaluationFixture(t *testing.T) (string, string, string, string) {
 	}
 	defer conn.Close(ctx)
 	ns, project, user := uuid.NewString(), uuid.NewString(), uuid.NewString()
-	if _, err = conn.Exec(ctx, `INSERT INTO pangu.projects(id,namespace,name,source,branch,worker_id) VALUES($1,$2,'评测试点','unused','main','test')`, project, ns); err != nil {
+	if _, err = conn.Exec(ctx, `INSERT INTO pangu.projects(vcs,id,namespace,name,source,branch,worker_id) VALUES('git',$1,$2,'评测试点','unused','main','test')`, project, ns); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = conn.Exec(ctx, `INSERT INTO pangu.users(id,namespace,app_id,tenant_key,open_id,is_admin) VALUES($1,$2,'test','test',$3,true)`, user, ns, user); err != nil {
 		t.Fatal(err)
 	}
-	record, err := submission.Prepare(ctx, ns, "submit", "one", submission.Snapshot{Workflow: workflow.Definition{ProjectID: project}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	run := uuid.NewString()
-	if _, err = submission.Dispatch(ctx, ns, record.ID, func(context.Context, *submission.Record) (string, error) { return run, nil }); err != nil {
-		t.Fatal(err)
-	}
+	_, _, run := databaseSubmissionFixture(t, ns, workflow.Definition{ProjectID: project}, "", true)
 	return ns, project, run, user
 }
 
@@ -124,14 +116,7 @@ func TestQualityCountsRerunsOnceAndKeepsInitialVerdict(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	next, err := submission.Prepare(ctx, ns, "rerun", "second", submission.Snapshot{Workflow: workflow.Definition{ProjectID: project}, SourceRunID: run})
-	if err != nil {
-		t.Fatal(err)
-	}
-	rerun := uuid.NewString()
-	if _, err = submission.Dispatch(ctx, ns, next.ID, func(context.Context, *submission.Record) (string, error) { return rerun, nil }); err != nil {
-		t.Fatal(err)
-	}
+	_, _, rerun := databaseSubmissionFixture(t, ns, workflow.Definition{ProjectID: project}, run, true)
 	if _, err = SaveFeedback(ctx, ns, project, rerun, identity.Actor{ID: user, Namespace: ns}, FeedbackInput{Decision: "accepted", Reason: "复核通过", SubjectHash: strings.Repeat("b", 64)}); err != nil {
 		t.Fatal(err)
 	}

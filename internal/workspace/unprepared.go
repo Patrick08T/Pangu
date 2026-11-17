@@ -8,7 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// 初始化工作区前失败的已接受运行也需要保留期限；不触碰任何磁盘路径。
+// 初始化工作区前失败的已接受运行也需要保留期限；P4 仅清理核验过的自有目录。
 func expireUnprepared(ctx context.Context, conn *pgx.Conn, id string, finishedAt time.Time) error {
 	var purged bool
 	if err := conn.QueryRow(ctx, `SELECT s.purged_at IS NOT NULL FROM pangu.submissions s JOIN pangu.projects p ON p.id=s.project_id WHERE s.run_id=$1 AND p.worker_id=$2`, id, WorkerID()).Scan(&purged); err != nil {
@@ -32,6 +32,9 @@ func expireUnprepared(ctx context.Context, conn *pgx.Conn, id string, finishedAt
 	}
 	if result.RowsAffected() != 1 {
 		return errors.New("无法确认未准备运行的清理条件")
+	}
+	if err = cleanupUnpreparedPerforce(ctx, conn, id); err != nil {
+		return err
 	}
 	for _, query := range []string{
 		`UPDATE pangu.node_attempts SET message='',truncated=true,evidence='[]'::jsonb,evidence_truncated=true WHERE run_id=$1`,

@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const objectColumns = `id::text,kind,name,revision,archived,spec,created_at`
+const objectColumns = `id::text,kind,name,revision,archived,spec,created_at,updated_at`
 
 func Create(ctx context.Context, namespace string, input NewObject) (*Object, error) {
 	if err := input.Validate(); err != nil {
@@ -60,7 +60,7 @@ func Get(ctx context.Context, namespace, id string) (*Object, error) {
 	return scanObject(conn.QueryRow(ctx, "SELECT "+objectColumns+" FROM pangu.catalog_objects WHERE namespace=$1 AND id=$2", namespace, id))
 }
 
-func List(ctx context.Context, namespace, kind string, offset int) ([]Object, error) {
+func List(ctx context.Context, namespace, kind string, offset int, archived *bool) ([]Object, error) {
 	if offset < 0 {
 		return nil, errors.New("offset 必须为非负整数")
 	}
@@ -69,7 +69,7 @@ func List(ctx context.Context, namespace, kind string, offset int) ([]Object, er
 		return nil, err
 	}
 	defer conn.Close(context.Background())
-	rows, err := conn.Query(ctx, "SELECT "+objectColumns+" FROM pangu.catalog_objects WHERE namespace=$1 AND merged_into IS NULL AND ($2='' OR kind=$2) ORDER BY created_at,id OFFSET $3 LIMIT 100", namespace, kind, offset)
+	rows, err := conn.Query(ctx, "SELECT "+objectColumns+" FROM pangu.catalog_objects WHERE namespace=$1 AND merged_into IS NULL AND ($2='' OR kind=$2) AND ($4::boolean IS NULL OR archived=$4) ORDER BY updated_at DESC,id OFFSET $3 LIMIT 100", namespace, kind, offset, archived)
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +156,7 @@ func lockedObject(ctx context.Context, tx pgx.Tx, namespace, id string, revision
 func scanObject(row pgx.Row) (*Object, error) {
 	item := &Object{}
 	var data []byte
-	err := row.Scan(&item.ID, &item.Kind, &item.Name, &item.Revision, &item.Archived, &data, &item.CreatedAt)
+	err := row.Scan(&item.ID, &item.Kind, &item.Name, &item.Revision, &item.Archived, &data, &item.CreatedAt, &item.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}

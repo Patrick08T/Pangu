@@ -17,7 +17,7 @@ func (h handler) generateFactory(ctx context.Context, s *factory.Session, in fac
 	// 网络重试必须复用已保存快照，不因新上下文而产生第二次模型调用。
 	for _, turn := range s.Turns {
 		if turn.ID == in.ID {
-			if turn.Input != in {
+			if !turn.Input.Equal(in) {
 				return nil, catalog.ErrConflict
 			}
 			return h.backend.GetRequest(ctx, turn.RequestID)
@@ -54,18 +54,10 @@ func (h handler) generateFactory(ctx context.Context, s *factory.Session, in fac
 
 func (h handler) factoryContext(ctx context.Context, project string, in factory.Input) (*factory.Context, error) {
 	ns := h.backend.Namespace()
-	choices, err := catalog.ConnectionChoices(ctx, ns, 0)
+	out, err := h.factoryCatalog(ctx, in.ConnectionVersion)
 	if err != nil {
 		return nil, err
 	}
-	found := false
-	for _, c := range choices {
-		found = found || c.ID == in.ConnectionVersion
-	}
-	if !found {
-		return nil, fmt.Errorf("%w: 请选择已发布的共享模型连接", catalog.ErrInvalid)
-	}
-	out := &factory.Context{Connections: choices}
 	if in.TargetID != "" {
 		item, err := catalog.Get(ctx, ns, in.TargetID)
 		if err != nil {
@@ -110,4 +102,24 @@ func (h handler) factoryContext(ctx context.Context, project string, in factory.
 		out.Evidence = string(data)
 	}
 	return out, nil
+}
+
+func (h handler) factoryCatalog(ctx context.Context, connectionVersion string) (*factory.Context, error) {
+	ns := h.backend.Namespace()
+	choices, err := catalog.ConnectionChoices(ctx, ns, 0)
+	if err != nil {
+		return nil, err
+	}
+	found := false
+	for _, c := range choices {
+		found = found || c.ID == connectionVersion
+	}
+	if !found {
+		return nil, fmt.Errorf("%w: 请选择已发布的共享模型连接", catalog.ErrInvalid)
+	}
+	agents, err := catalog.AgentChoices(ctx, ns)
+	if err != nil {
+		return nil, err
+	}
+	return &factory.Context{Agents: agents, Connections: choices}, nil
 }

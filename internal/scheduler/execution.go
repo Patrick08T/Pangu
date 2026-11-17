@@ -5,20 +5,15 @@ import (
 	"errors"
 	"time"
 
-	"github.com/Patrick08T/Pangu/internal/agent"
-	"github.com/Patrick08T/Pangu/internal/approval"
 	"github.com/Patrick08T/Pangu/internal/diagnostic"
 	"github.com/Patrick08T/Pangu/internal/execution"
-	"github.com/Patrick08T/Pangu/internal/research"
 	"github.com/Patrick08T/Pangu/internal/trace"
-	"github.com/Patrick08T/Pangu/internal/usage"
 	"github.com/Patrick08T/Pangu/internal/workflow"
-	"github.com/Patrick08T/Pangu/internal/workspace"
 	"github.com/google/uuid"
 	hatchet "github.com/hatchet-dev/hatchet/sdks/go"
 )
 
-func runAgent(ctx hatchet.Context, execute func(context.Context, workflow.NodeInput) (workflow.NodeOutput, error), input workflow.NodeInput) (workflow.NodeOutput, error) {
+func runAgent(ctx hatchet.Context, namespace string, execute func(context.Context, workflow.NodeInput) (workflow.NodeOutput, error), input workflow.NodeInput) (workflow.NodeOutput, error) {
 	if err := input.Node.Validate(); err != nil {
 		return workflow.NodeOutput{}, hatchet.NewNonRetryableError(err)
 	}
@@ -33,7 +28,7 @@ func runAgent(ctx hatchet.Context, execute func(context.Context, workflow.NodeIn
 	if err := beginAttempt(nodeCtx, &item); err != nil {
 		return workflow.NodeOutput{}, hatchet.NewNonRetryableError(err)
 	}
-	out, err := tracedNode(nodeCtx, item, input, execute)
+	out, err := tracedNode(nodeCtx, namespace, item, input, execute)
 	if errors.Is(err, workflow.ErrStopUnconfirmed) {
 		return out, hatchet.NewNonRetryableError(err)
 	}
@@ -43,7 +38,7 @@ func runAgent(ctx hatchet.Context, execute func(context.Context, workflow.NodeIn
 	if nodeCtx.Err() != nil && !errors.As(err, &failure) {
 		err = nodeCtx.Err()
 	}
-	retry := workflow.CanRetry(err) && ctx.RetryCount() < policy.Retries
+	retry := workflow.CanRetry(err) && !workflow.ModelRetryCategory(workflow.FailureKind(err)) && ctx.RetryCount() < policy.Retries
 	item.Category = workflow.FailureKind(err)
 	if err != nil {
 		item.Status = "failed"
@@ -64,53 +59,21 @@ func runAgent(ctx hatchet.Context, execute func(context.Context, workflow.NodeIn
 	return out, err
 }
 
-func tracedNode(ctx context.Context, item execution.Attempt, input workflow.NodeInput, execute func(context.Context, workflow.NodeInput) (workflow.NodeOutput, error)) (workflow.NodeOutput, error) {
+func tracedNode(ctx context.Context, namespace string, item execution.Attempt, input workflow.NodeInput, execute func(context.Context, workflow.NodeInput) (workflow.NodeOutput, error)) (workflow.NodeOutput, error) {
 	ctx = trace.WithRun(ctx, item.RunID, input.Node.ID, item.NodeRunID, item.Attempt)
 	ctx, span, err := trace.Start(ctx, "node", input.Node.ID, input.Input)
 	if err != nil {
 		return workflow.NodeOutput{}, err
 	}
-	out, err := executeNode(ctx, item, input, execute)
-	return out, errors.Join(err, span.End(out.Text, err))
+	out, err := executeExperienced(ctx, namespace, item, input, execute)
+	if traceErr := span.End(out.Text, err); traceErr != nil {
+		return out, &workflow.Failure{Kind: "trace", Cause: errors.Join(err, traceErr)}
+	}
+	return out, err
 }
 
 func executeNode(ctx context.Context, item execution.Attempt, input workflow.NodeInput, execute func(context.Context, workflow.NodeInput) (workflow.NodeOutput, error)) (workflow.NodeOutput, error) {
-	ctx = usage.WithRun(ctx, item.RunID, input.Node.ID, item.NodeRunID, item.Attempt)
-	input.ProcessScope = item.ProcessScope
-	input.RunID, input.NodeRunID = item.RunID, item.NodeRunID
-	call := func() (workflow.NodeOutput, error) {
-		if input.Node.Approval != nil {
-			if err := approval.Consume(ctx, item.RunID, input, input.ApprovalID); err != nil {
-				return workflow.NodeOutput{}, err
-			}
-		}
-		out, err := execute(ctx, input)
-		out.RunID = item.NodeRunID
-		if err == nil {
-			err = workflow.ValidateOutput(input.Node, &out)
-		}
-		return out, err
-	}
-	if input.Node.Role != "" {
-		return research.Persist(ctx, item.RunID, item.NodeRunID, input.ProjectID, call)
-	}
-	if input.Node.Executor != "codex" {
-		return call()
-	}
-	return workspace.Execute(ctx, item.RunID, item.NodeRunID, item.Attempt, input.Node.ReadOnly, func(path string) (workflow.NodeOutput, error) {
-		input.Workspace = path
-		out, err := call()
-		if err != nil {
-			return out, err
-		}
-		command, err := workspace.Verification(ctx, item.RunID)
-		if err != nil || len(command) == 0 {
-			return out, err
-		}
-		evidence, err := agent.Verify(ctx, path, command, item.ProcessScope)
-		out.Evidence = append(out.Evidence, evidence)
-		return out, err
-	})
+	return executeNodeObserved(ctx, item, input, execute, nil)
 }
 
 func allowDispatch(ctx context.Context, runID string) error {
