@@ -39,7 +39,7 @@ func TestMergedRoleKeepsFixedAutomationVersionRunnable(t *testing.T) {
 	if err != nil || d.VersionID != version.ID || d.Nodes[0].AgentVersion != version.ID {
 		t.Fatal("合并破坏了自动化的固定版本", err)
 	}
-	items, err := List(ctx, ns, "agent", 0)
+	items, err := List(ctx, ns, "agent", 0, nil)
 	if err != nil || len(items) != 1 || items[0].ID != kept.ID {
 		t.Fatal("合并副本仍在目录中", err)
 	}
@@ -72,7 +72,7 @@ func TestPublishingSharedFlowDoesNotCreateAgents(t *testing.T) {
 	if _, err = Publish(ctx, ns, flow.ID, flow.Revision); err != nil {
 		t.Fatal(err)
 	}
-	roles, err := List(ctx, ns, "agent", 0)
+	roles, err := List(ctx, ns, "agent", 0, nil)
 	if err != nil || len(roles) != 1 || roles[0].ID != role.ID {
 		t.Fatalf("发布工作流不应复制角色: %+v %v", roles, err)
 	}

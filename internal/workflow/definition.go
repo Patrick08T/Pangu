@@ -8,6 +8,7 @@ import (
 )
 
 type Definition struct {
+	Loops       []Loop  `json:"loops,omitempty"`
 	Budget      *Budget `json:"budget,omitempty"`
 	InputSchema *Shape  `json:"input_schema,omitempty"`
 	VersionID   string  `json:"version_id,omitempty"`
@@ -25,6 +26,7 @@ type Node struct {
 	Mode              string                  `json:"mode,omitempty"`
 	Policy            *Policy                 `json:"policy,omitempty"`
 	OutputSchema      *Shape                  `json:"output_schema,omitempty"`
+	ReportSchema      *Shape                  `json:"report_schema,omitempty"`
 	Bindings          map[string]FieldBinding `json:"bindings,omitempty"`
 	AgentVersion      string                  `json:"agent_version,omitempty"`
 	ID                string                  `json:"id"`
@@ -32,28 +34,44 @@ type Node struct {
 	Description       string                  `json:"description,omitempty"`
 	Instruction       string                  `json:"instruction"`
 	Model             string                  `json:"model,omitempty"`
+	ReasoningEffort   string                  `json:"reasoning_effort,omitempty"`
+	Fast              *bool                   `json:"fast,omitempty"`
 	ConnectionVersion string                  `json:"connection_version,omitempty"`
 	DependsOn         []string                `json:"depends_on,omitempty"`
 }
 
 type NodeInput struct {
-	ApprovalID   string                `json:"approval_id,omitempty"`
-	RunID        string                `json:"-"`
-	NodeRunID    string                `json:"-"`
-	Parameters   map[string]any        `json:"parameters,omitempty"`
-	ProjectID    string                `json:"project_id,omitempty"`
-	Workspace    string                `json:"-"`
-	ProcessScope string                `json:"-"`
-	Node         Node                  `json:"node"`
-	Input        string                `json:"input"`
-	Parents      map[string]NodeOutput `json:"parents"`
+	RequestID          string                `json:"request_id,omitempty"`
+	Experiences        []Experience          `json:"experiences,omitempty"`
+	ApprovalGeneration int                   `json:"approval_generation,omitempty"`
+	Iteration          *Iteration            `json:"iteration,omitempty"`
+	ReviewPurpose      string                `json:"review_purpose,omitempty"`
+	EvidenceRetry      *EvidenceRetry        `json:"evidence_retry,omitempty"`
+	PlatformEvidence   *EvidenceReference    `json:"platform_evidence,omitempty"`
+	ApprovalRound      int                   `json:"approval_round,omitempty"`
+	ReviewFeedback     *ReviewFeedback       `json:"review_feedback,omitempty"`
+	Revision           *Revision             `json:"revision,omitempty"`
+	ApprovalID         string                `json:"approval_id,omitempty"`
+	RunID              string                `json:"-"`
+	NodeRunID          string                `json:"-"`
+	Parameters         map[string]any        `json:"parameters,omitempty"`
+	ProjectID          string                `json:"project_id,omitempty"`
+	Workspace          string                `json:"-"`
+	ProcessScope       string                `json:"-"`
+	Node               Node                  `json:"node"`
+	Input              string                `json:"input"`
+	Parents            map[string]NodeOutput `json:"parents"`
 }
 
 type NodeOutput struct {
+	Lineage           *OutputLineage    `json:"lineage,omitempty"`
+	Iteration         *Iteration        `json:"iteration,omitempty"`
+	ContentRevision   string            `json:"content_revision,omitempty"`
+	Blockers          []EvidenceBlocker `json:"evidence_blockers,omitempty"`
 	Skipped           bool              `json:"skipped,omitempty"`
 	ReportIDs         []string          `json:"report_ids,omitempty"`
+	ReportSHA256      string            `json:"report_sha256,omitempty"`
 	Reports           []Report          `json:"-"`
-	Data              map[string]any    `json:"data,omitempty"`
 	Text              string            `json:"text"`
 	RunID             string            `json:"run_id"`
 	Evidence          []CommandEvidence `json:"-"`
@@ -81,6 +99,9 @@ func (d Definition) TemplateLayers() ([][]Node, error) {
 }
 
 func (d Definition) validateLayers(requireProject bool) ([][]Node, error) {
+	if err := d.validateApprovals(); err != nil {
+		return nil, err
+	}
 	if err := d.validateConditions(); err != nil {
 		return nil, err
 	}
@@ -132,15 +153,18 @@ func (d Definition) validateLayers(requireProject bool) ([][]Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	return layers, approvalLayers(layers)
+	return layers, d.validateExecution(layers)
 }
 
 func (n Node) Validate() error {
-	if err := n.Handoff.Validate(false); err != nil {
+	if err := n.ValidateModelOptions(); err != nil {
 		return err
 	}
-	if n.Approval != nil && (n.Approval.TimeoutSeconds < 1 || n.Approval.TimeoutSeconds > 3600) {
-		return fmt.Errorf("节点 %s 的人工等待期限必须为 1–3600 秒，且仍受整次运行 6 小时上限约束", n.ID)
+	if err := n.validateReport(); err != nil {
+		return err
+	}
+	if err := n.Handoff.Validate(false); err != nil {
+		return err
 	}
 	if err := n.validateRole(); err != nil {
 		return err

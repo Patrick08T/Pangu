@@ -2,11 +2,14 @@ package usage
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"github.com/Patrick08T/Pangu/internal/workflow"
 	"io"
+	"net"
 	"net/http"
+	"syscall"
 )
 
 type Transport struct {
@@ -26,7 +29,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	response, err := base.RoundTrip(req)
 	if err != nil {
-		return nil, errors.Join(err, Finish(id, nil, false))
+		return nil, transportFailure(t.Kind, err, Finish(id, nil, false))
 	}
 	raw, err := io.ReadAll(io.LimitReader(response.Body, 4*1024*1024+1))
 	response.Body.Close()
@@ -34,7 +37,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		err = errors.New("用量响应超过 4 MiB")
 	}
 	if err != nil {
-		return nil, errors.Join(err, Finish(id, nil, false))
+		return nil, transportFailure(t.Kind, err, Finish(id, nil, false))
 	}
 	var payload struct {
 		Usage *struct {
@@ -54,4 +57,22 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	response.Body = io.NopCloser(bytes.NewReader(raw))
 	return response, nil
+}
+
+func transportFailure(kind string, cause, recordErr error) error {
+	if recordErr != nil {
+		return &workflow.Failure{Kind: "usage", Cause: errors.Join(cause, recordErr)}
+	}
+	if kind != "model" || errors.Is(cause, context.Canceled) {
+		return cause
+	}
+	var network net.Error
+	temporary := errors.As(cause, &network) && (network.Timeout() || network.Temporary())
+	for _, transient := range []error{io.EOF, io.ErrUnexpectedEOF, syscall.ECONNRESET, syscall.ECONNREFUSED, syscall.EPIPE} {
+		temporary = temporary || errors.Is(cause, transient)
+	}
+	if temporary {
+		return &workflow.Failure{Kind: "model_network", Retry: true, Cause: cause}
+	}
+	return cause
 }

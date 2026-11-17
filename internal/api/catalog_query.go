@@ -16,6 +16,10 @@ func catalogQuery(values url.Values, versions bool) (int, error) {
 			return 0, errors.New("版本列表只接受 offset")
 		}
 		switch key {
+		case "archived":
+			if items[0] != "true" && items[0] != "false" {
+				return 0, errors.New("archived 必须为 true 或 false")
+			}
 		case "offset":
 			var err error
 			offset, err = strconv.Atoi(items[0])

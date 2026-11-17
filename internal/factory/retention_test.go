@@ -21,7 +21,7 @@ func TestRetentionInvalidatesPreviouslyReadGenerationContext(t *testing.T) {
 	next := in
 	next.ID = uuid.NewString()
 	next.Revision = s.Revision
-	d, digest, err := Definition(*s, next, Context{})
+	d, digest, err := Definition(*s, next, Context{Connections: []catalog.ConnectionChoice{{ID: next.ConnectionVersion, Provider: "codex"}}})
 	if err != nil {
 		t.Fatal(err)
 	}

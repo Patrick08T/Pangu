@@ -64,7 +64,7 @@ func TestWorkspaceFourCrashBoundaries(t *testing.T) {
 		t.Fatal(err)
 	}
 	source, _ := sourceRepository(t)
-	project, err := Register(ctx, "crash-matrix", Project{Name: "四阶段故障", Source: source, Branch: "main", WorkerID: WorkerID()})
+	project, err := Register(ctx, "crash-matrix", Project{VCS: "git", Name: "四阶段故障", Source: source, Branch: "main", WorkerID: WorkerID()})
 	if err != nil {
 		t.Fatal(err)
 	}

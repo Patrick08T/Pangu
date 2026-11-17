@@ -23,7 +23,7 @@ func TestExpiryProtectsReadersAndOnlyDeletesManagedRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	source, _ := sourceRepository(t)
-	p, err := Register(ctx, "retention-test", Project{Name: "保留验证", Source: source, Branch: "main", WorkerID: WorkerID()})
+	p, err := Register(ctx, "retention-test", Project{VCS: "git", Name: "保留验证", Source: source, Branch: "main", WorkerID: WorkerID()})
 	if err != nil {
 		t.Fatal(err)
 	}

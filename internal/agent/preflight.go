@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/url"
 	"os"
@@ -31,7 +32,11 @@ func Preflight(ctx context.Context, definition workflow.Definition) workflow.Pre
 	}
 	seen := map[string]bool{}
 	for _, node := range definition.Nodes {
-		component := node.Executor + ":" + node.ConnectionVersion + ":" + node.Model
+		options, _ := json.Marshal(struct {
+			Effort string
+			Fast   *bool
+		}{node.ReasoningEffort, node.Fast})
+		component := node.Executor + ":" + node.ConnectionVersion + ":" + node.Model + ":" + string(options)
 		if seen[component] {
 			continue
 		}
@@ -58,6 +63,9 @@ func executorCheck(ctx context.Context, project string, node workflow.Node) work
 		return check
 	}
 	check.Status = codexReady(ctx)
+	if check.Status == "ready" && validateCodexOptions(ctx, node) != nil {
+		return workflow.Check{Component: "codex_model_options", Status: "unavailable"}
+	}
 	if check.Status != "ready" || node.Model == "" {
 		return check
 	}

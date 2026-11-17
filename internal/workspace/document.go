@@ -24,7 +24,7 @@ func Document(ctx context.Context, run, name string) ([]byte, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	entry, err := git(ctx, set.repository, "ls-tree", "-z", set.Base, "--", name)
+	entry, err := set.git(ctx, "ls-tree", "-z", set.Base, "--", name)
 	if err != nil {
 		return nil, "", err
 	}
@@ -36,9 +36,8 @@ func Document(ctx context.Context, run, name string) ([]byte, string, error) {
 	if len(meta) != 3 || meta[1] != "blob" || (meta[0] != "100644" && meta[0] != "100755") {
 		return nil, "", errors.New("资料必须为普通文件，不允许符号链接")
 	}
-	size, err := set.size(ctx, meta[2])
-	if err != nil || size > 64*1024 {
-		return nil, "", errors.New("资料不可读或超过 64 KiB")
+	if err := set.documentSize(ctx, meta[2]); err != nil {
+		return nil, "", err
 	}
 	data, err := set.Blob(ctx, meta[2])
 	if err != nil {

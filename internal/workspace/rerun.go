@@ -29,8 +29,8 @@ func RerunSource(ctx context.Context, id, project string) (*Run, error) {
 	if err != nil || record.ProjectID != project || record.WorkerID != WorkerID() || record.Directory != filepath.Join(root, id) || !record.Ready {
 		return nil, errors.New("原基准项目、Worker 或磁盘不匹配")
 	}
-	if _, err := git(ctx, filepath.Join(record.Directory, "base"), "cat-file", "-e", record.BaseCommit+"^{commit}"); err != nil {
-		return nil, errors.New("原运行基准已缺失，不允许替换为最新代码")
+	if err := inspectRerunCommit(ctx, record); err != nil {
+		return nil, errors.Join(errors.New("原运行基准已缺失，不允许替换为最新代码"), err)
 	}
 	return record, nil
 }

@@ -38,11 +38,11 @@ func History(ctx context.Context, namespace, id string) ([]byte, error) {
 
 // HistoryPending 按上次检查轮转，活跃或错误记录不能饿死其他运行。
 func HistoryPending(ctx context.Context, namespace string) ([]string, error) {
-	conn, err := database.Open(ctx)
+	conn, err := database.Acquire(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close(context.Background())
+	defer conn.Release()
 	rows, err := conn.Query(ctx, `WITH pending AS (
  SELECT s.id FROM pangu.submissions s WHERE s.namespace=$1 AND s.run_id IS NOT NULL
  AND NOT EXISTS(SELECT 1 FROM pangu.run_history h WHERE h.run_id=s.run_id)

@@ -22,7 +22,7 @@ func TestRetentionResumesIntentAndPreservesConfiguration(t *testing.T) {
 	}
 	source, _ := sourceRepository(t)
 	namespace := uuid.NewString()
-	p, err := Register(ctx, namespace, Project{Name: "中断恢复", Source: source, Branch: "main", WorkerID: WorkerID()})
+	p, err := Register(ctx, namespace, Project{VCS: "git", Name: "中断恢复", Source: source, Branch: "main", WorkerID: WorkerID()})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -22,8 +22,11 @@ func RequestCancel(ctx context.Context, namespace, runID string) error {
 	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", runID); err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO pangu.run_cancellations(run_id,namespace) VALUES($1,$2)
-		ON CONFLICT (run_id) DO NOTHING`, runID, namespace)
+	_, err = tx.Exec(ctx, `WITH RECURSIVE affected(run_id) AS (
+ SELECT $1::uuid UNION SELECT s.run_id FROM affected r JOIN pangu.approvals a ON a.run_id=r.run_id
+ JOIN pangu.plan_continuations c ON c.approval_id=a.id JOIN pangu.submissions s ON s.id=c.request_id
+ WHERE s.run_id IS NOT NULL AND s.namespace=$2)
+ INSERT INTO pangu.run_cancellations(run_id,namespace) SELECT run_id,$2 FROM affected ON CONFLICT (run_id) DO NOTHING`, runID, namespace)
 	if err != nil {
 		return errors.New("无法持久保存取消请求")
 	}
@@ -67,11 +70,11 @@ func CancellationFlags(ctx context.Context, ids []string) (map[string]bool, erro
 }
 
 func Pending(ctx context.Context, namespace string) ([]string, error) {
-	conn, err := database.Open(ctx)
+	conn, err := database.Acquire(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close(context.Background())
+	defer conn.Release()
 	rows, err := conn.Query(ctx, `SELECT run_id::text FROM pangu.run_cancellations
 		WHERE namespace=$1 AND reconciled_at IS NULL ORDER BY last_checked_at,requested_at LIMIT 100`, namespace)
 	if err != nil {

@@ -4,15 +4,16 @@ import (
 	"context"
 
 	"github.com/Patrick08T/Pangu/internal/database"
+	"github.com/google/uuid"
 )
 
 func RemotePending(ctx context.Context, namespace string) ([]string, error) {
-	conn, err := database.Open(ctx)
+	conn, err := database.Acquire(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close(context.Background())
-	rows, err := conn.Query(ctx, "SELECT id::text FROM pangu.schedules WHERE namespace=$1 AND NOT remote_synced ORDER BY remote_checked_at,created_at LIMIT 100", namespace)
+	defer conn.Release()
+	rows, err := conn.Query(ctx, `SELECT id::text FROM pangu.schedules s WHERE namespace=$1 AND NOT remote_synced AND NOT `+remoteEvolutionOwned+` ORDER BY remote_checked_at,created_at LIMIT 100`, namespace)
 	if err != nil {
 		return nil, err
 	}
@@ -29,36 +30,27 @@ func RemotePending(ctx context.Context, namespace string) ([]string, error) {
 }
 
 func ReconcileRemote(ctx context.Context, namespace, id string, sync func(context.Context, *Plan) (string, error)) (*Plan, error) {
+	target, err := uuid.Parse(id)
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	id = target.String() // UUID aliases must not create distinct advisory mutexes.
 	conn, err := database.Open(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close(context.Background())
-	if _, err := conn.Exec(ctx, "UPDATE pangu.schedules SET remote_checked_at=now() WHERE namespace=$1 AND id=$2", namespace, id); err != nil {
+	defer conn.Close(context.Background()) // Releases the session lock on every exit.
+	if _, err = conn.Exec(ctx, `SELECT pg_advisory_lock(hashtextextended($1,0))`, "schedule-remote:"+id); err != nil {
 		return nil, err
 	}
-	tx, err := conn.Begin(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback(context.Background())
-	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", "schedule:"+id); err != nil {
-		return nil, err
-	}
-	plan, err := scanPlan(tx.QueryRow(ctx, "SELECT "+planColumns+" FROM pangu.schedules WHERE namespace=$1 AND id=$2", namespace, id))
+	plan, snapshot, err := remoteEvolutionPrepare(ctx, conn, namespace, id)
 	if err != nil || plan.Ready {
 		return plan, err
 	}
+	// The shared mutex spans RPC, but no SQL transaction or row lock does.
 	remote, err := sync(ctx, plan)
 	if err != nil {
 		return plan, err
 	}
-	if _, err := tx.Exec(ctx, "UPDATE pangu.schedules SET remote_synced=true,hatchet_id=nullif($2,'')::uuid WHERE id=$1", id, remote); err != nil {
-		return plan, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return plan, err
-	}
-	plan.Ready, plan.HatchetID = true, remote
-	return plan, nil
+	return remoteEvolutionReceipt(ctx, conn, namespace, id, snapshot, remote)
 }

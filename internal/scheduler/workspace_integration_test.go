@@ -26,7 +26,7 @@ func registerTestProject(t *testing.T, backend scheduler.Backend) *workspace.Pro
 			t.Fatalf("准备项目: %v %s", err, out)
 		}
 	}
-	project, err := backend.RegisterProject(context.Background(), workspace.Project{Name: "真实调度验证项目", Source: source, Branch: "main", WorkerID: "integration-worker"})
+	project, err := backend.RegisterProject(context.Background(), workspace.Project{VCS: "git", Name: "真实调度验证项目", Source: source, Branch: "main", WorkerID: "integration-worker"})
 	if err != nil {
 		t.Fatal(err)
 	}

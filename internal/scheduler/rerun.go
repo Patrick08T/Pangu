@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/Patrick08T/Pangu/internal/catalog"
 
 	"github.com/Patrick08T/Pangu/internal/submission"
@@ -27,6 +28,7 @@ func (b Backend) Rerun(ctx context.Context, id, key string) (*submission.Record,
 		return nil, err
 	}
 	snapshot := previous.Snapshot
+	snapshot.ApprovalOrigin = ""
 	snapshot.SourceRunID = id
 	if snapshot.Fork != nil {
 		snapshot.Fork = &workflow.Fork{OriginCommit: snapshot.Fork.OriginCommit, Commit: snapshot.Fork.OriginCommit}
@@ -38,8 +40,8 @@ func (b Backend) Rerun(ctx context.Context, id, key string) (*submission.Record,
 	if !errors.Is(err, submission.ErrNotFound) {
 		return nil, err
 	}
-	if err := snapshot.Workflow.ValidateHandoffs(); err != nil {
-		return nil, errors.Join(catalog.ErrInvalid, err)
+	if err := validateRerun(snapshot.Workflow); err != nil {
+		return nil, fmt.Errorf("%w：原运行快照不符合当前契约；整次重跑固定原版本，请从工作流页面选择新版发起运行：%w", catalog.ErrInvalid, err)
 	}
 	expired, err := workspace.Expired(ctx, id)
 	if err != nil {
@@ -60,4 +62,15 @@ func (b Backend) Rerun(ctx context.Context, id, key string) (*submission.Record,
 		return nil, err
 	}
 	return b.dispatch(ctx, item), nil
+}
+
+func validateRerun(d workflow.Definition) error {
+	if err := d.ValidateHandoffs(); err != nil {
+		return err
+	}
+	if err := d.ValidateInput(); err != nil {
+		return err
+	}
+	_, err := d.Layers()
+	return err
 }

@@ -30,7 +30,7 @@ func TestHatchetDeliveryRequiresApprovalVerificationAndHumanAcceptance(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	project, err := backend.RegisterProject(context.Background(), workspace.Project{Name: "交付链路", Source: original.Source, Branch: "main", WorkerID: original.WorkerID, Verification: []string{git, "diff", "--check"}})
+	project, err := backend.RegisterProject(context.Background(), workspace.Project{VCS: "git", Name: "交付链路", Source: original.Source, Branch: "main", WorkerID: original.WorkerID, Verification: []string{git, "diff", "--check"}})
 	if err != nil {
 		t.Fatal(err)
 	}

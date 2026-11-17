@@ -28,6 +28,7 @@ jobs:
         run: |
           ./scripts/codex-source.test.ps1
           ./scripts/recovery.test.ps1
+          ./scripts/start.test.ps1
   postgres:
     runs-on: ubuntu-latest
     services:

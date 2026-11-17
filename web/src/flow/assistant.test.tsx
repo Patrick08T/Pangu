@@ -24,3 +24,16 @@ test('原生 Codex 显示文件能力，不查询模型连接',()=>{
   render(<AssistantSummary version={version('codex')}/>);
   expect(screen.getByText(/可在项目独立工作区内修改文件/)).toBeTruthy();expect(fetch).not.toHaveBeenCalled();
 });
+
+test('节点侧栏常显绑定角色和配置入口，不需展开职责',()=>{
+  render(<AssistantSummary version={{...version('codex'),agentName:'后端开发工程师'}}/>);
+  expect(screen.getByText('Agent 角色：后端开发工程师')).toBeTruthy();
+  const link=screen.getByRole('link',{name:'查看 Agent 角色配置'});
+  expect(link.closest('details')).toBeNull();
+  expect(link.getAttribute('href')).toBe('#/catalog/agent');
+});
+
+test('角色名称暂不可用时明确显示版本中的标识，不猜测角色',()=>{
+  render(<AssistantSummary version={version('codex')}/>);
+  expect(screen.getByText('Agent 标识：agent')).toBeTruthy();
+});

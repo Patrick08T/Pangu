@@ -11,6 +11,7 @@ import (
 )
 
 type Bundle struct {
+	Loops      []workflow.Loop  `json:"loops,omitempty"`
 	Name       string           `json:"name"`
 	ObjectID   string           `json:"object_id,omitempty"`
 	Revision   int              `json:"revision,omitempty"`
@@ -75,7 +76,7 @@ func (b Bundle) Validate() error {
 			return invalid("步骤引用未知 Agent")
 		}
 	}
-	if len(b.Steps) == 0 && (b.ObjectID != "" || b.Parameters != nil || b.Budget != nil) {
+	if len(b.Steps) == 0 && (b.ObjectID != "" || b.Parameters != nil || b.Budget != nil || len(b.Loops) > 0) {
 		return invalid("单 Agent 候选不能含工作流配置")
 	}
 	return bundleTarget(b.ObjectID, b.Revision)
@@ -125,7 +126,7 @@ func ApplyBundleTx(ctx context.Context, tx pgx.Tx, ns string, b Bundle) (*Bundle
 		versions[a.Key] = v.ID
 	}
 	if len(b.Steps) > 0 {
-		flow := &Flow{Parameters: b.Parameters, Budget: b.Budget}
+		flow := &Flow{Parameters: b.Parameters, Budget: b.Budget, Loops: b.Loops}
 		for _, s := range b.Steps {
 			flow.Nodes = append(flow.Nodes, Binding{ID: s.ID, AgentVersion: versions[s.Agent], DependsOn: s.DependsOn, Bindings: s.Bindings, When: s.When, Approval: s.Approval})
 		}

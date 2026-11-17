@@ -39,7 +39,7 @@ func TestHatchetVerificationFailureCannotPublishOrRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := backend.RegisterProject(context.Background(), workspace.Project{Name: "验证命令", Source: original.Source, Branch: "main", WorkerID: original.WorkerID, Verification: []string{git, "diff", "--exit-code", "--", "README.md"}})
+	p, err := backend.RegisterProject(context.Background(), workspace.Project{VCS: "git", Name: "验证命令", Source: original.Source, Branch: "main", WorkerID: original.WorkerID, Verification: []string{git, "diff", "--exit-code", "--", "README.md"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestHatchetVerificationHasNoNodeDeadline(t *testing.T) {
 	if err != nil {
 		t.Skip("需要 Windows PowerShell 验证子进程")
 	}
-	p, err := backend.RegisterProject(context.Background(), workspace.Project{Name: "无执行时限验证", Source: original.Source, Branch: "main", WorkerID: original.WorkerID, Verification: []string{program, "-NoProfile", "-NonInteractive", "-Command", "Start-Sleep -Seconds 10"}})
+	p, err := backend.RegisterProject(context.Background(), workspace.Project{VCS: "git", Name: "无执行时限验证", Source: original.Source, Branch: "main", WorkerID: original.WorkerID, Verification: []string{program, "-NoProfile", "-NonInteractive", "-Command", "Start-Sleep -Seconds 10"}})
 	if err != nil {
 		t.Fatal(err)
 	}

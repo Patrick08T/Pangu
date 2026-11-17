@@ -115,10 +115,10 @@ func Prefix(d, previous Definition, checkpoint string) ([]string, error) {
 		return nil, err
 	}
 	ids := []string{}
-	same := d.Input == previous.Input
+	same := d.Input == previous.Input && reflect.DeepEqual(d.Loops, previous.Loops)
 	for i, layer := range layers {
-		if len(layer) != 1 || layer[0].Executor != "codex" || layer[0].When != nil {
-			return nil, errors.New("检查点返工仅支持串行、无条件 Codex 前缀")
+		if len(layer) != 1 {
+			return nil, errors.New("检查点返工仅支持串行前缀")
 		}
 		same = same && i < len(current) && len(current[i]) == 1 && equalNode(layer[0], current[i][0])
 		if same {

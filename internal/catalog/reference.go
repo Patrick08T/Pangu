@@ -30,6 +30,9 @@ func validateReferences(ctx context.Context, reader rowReader, namespace string,
 			if v.Kind != "connection" || v.Archived || v.Spec.Connection.Model != node.Model {
 				return invalid("模型连接类型错误、已禁用或模型不一致")
 			}
+			if node.HasModelOptions() && v.Spec.Connection.Provider != "codex" {
+				return invalid("推理强度和 Fast 当前仅支持 Codex 账号连接")
+			}
 		}
 	}
 	if item.Spec.Flow != nil {
@@ -44,6 +47,11 @@ func validateReferences(ctx context.Context, reader rowReader, namespace string,
 }
 
 func Compile(ctx context.Context, namespace, version, project, input string) (*workflow.Definition, error) {
+	return CompileScoped(ctx, namespace, version, VersionScope{ProjectID: project}, input)
+}
+
+func CompileScoped(ctx context.Context, namespace, version string, scope VersionScope, input string) (*workflow.Definition, error) {
+	project := scope.ProjectID
 	if _, err := uuid.Parse(project); err != nil {
 		return nil, invalid("运行必须指定有效项目")
 	}
@@ -52,7 +60,7 @@ func Compile(ctx context.Context, namespace, version, project, input string) (*w
 		return nil, err
 	}
 	defer conn.Close(context.Background())
-	v, err := readVersion(ctx, conn, namespace, version)
+	v, err := readVersionScoped(ctx, conn, namespace, version, scope)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +74,7 @@ func Compile(ctx context.Context, namespace, version, project, input string) (*w
 		node.AgentVersion = v.ID
 		out = &workflow.Definition{ProjectID: project, Nodes: []workflow.Node{node}}
 	case "workflow":
-		out, err = compileFlow(ctx, conn, namespace, project, v.Spec.Flow, false)
+		out, err = compileFlowScoped(ctx, conn, namespace, scope, v.Spec.Flow, false)
 	default:
 		return nil, errors.New("仅可运行已发布的 Agent 或工作流版本")
 	}
@@ -84,7 +92,14 @@ func Compile(ctx context.Context, namespace, version, project, input string) (*w
 }
 
 func compileFlow(ctx context.Context, reader rowReader, namespace, project string, flow *Flow, newReference bool) (*workflow.Definition, error) {
-	out, err := resolveFlow(ctx, reader, namespace, project, flow, newReference)
+	return compileFlowScoped(ctx, reader, namespace, VersionScope{ProjectID: project}, flow, newReference)
+}
+
+func compileFlowScoped(ctx context.Context, reader rowReader, namespace string, scope VersionScope, flow *Flow, newReference bool) (*workflow.Definition, error) {
+	project := scope.ProjectID
+	out, err := resolveFlowLookup(project, flow, newReference, func(id string) (*Version, error) {
+		return readVersionScoped(ctx, reader, namespace, id, scope)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -106,9 +121,15 @@ func compileFlow(ctx context.Context, reader rowReader, namespace, project strin
 }
 
 func resolveFlow(ctx context.Context, reader rowReader, namespace, project string, flow *Flow, newReference bool) (*workflow.Definition, error) {
-	out := &workflow.Definition{ProjectID: project, InputSchema: flow.Parameters, Budget: flow.Budget}
+	return resolveFlowLookup(project, flow, newReference, func(id string) (*Version, error) {
+		return readVersionScoped(ctx, reader, namespace, id, VersionScope{ProjectID: project})
+	})
+}
+
+func resolveFlowLookup(project string, flow *Flow, newReference bool, lookup versionLookup) (*workflow.Definition, error) {
+	out := &workflow.Definition{ProjectID: project, InputSchema: flow.Parameters, Budget: flow.Budget, Loops: flow.Loops}
 	for _, binding := range flow.Nodes {
-		v, err := readVersion(ctx, reader, namespace, binding.AgentVersion)
+		v, err := lookup(binding.AgentVersion)
 		if err != nil {
 			return nil, err
 		}
@@ -125,6 +146,9 @@ func resolveFlow(ctx context.Context, reader rowReader, namespace, project strin
 		}
 		if binding.OutputSchema != nil {
 			node.OutputSchema = binding.OutputSchema
+		}
+		if binding.ReportSchema != nil {
+			node.ReportSchema = binding.ReportSchema
 		}
 		if binding.Approval != nil {
 			node.Approval = binding.Approval

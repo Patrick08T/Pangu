@@ -37,11 +37,11 @@ func Fires(ctx context.Context, namespace, id string, offset int64) ([]Fire, err
 }
 
 func Pending(ctx context.Context, namespace string) ([]Fire, error) {
-	conn, err := database.Open(ctx)
+	conn, err := database.Acquire(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close(context.Background())
+	defer conn.Release()
 	rows, err := conn.Query(ctx, `SELECT f.schedule_id::text,f.slot,f.status,f.reason,coalesce(f.request_id::text,''),f.snapshot
 		FROM pangu.schedule_fires f JOIN pangu.schedules p ON p.id=f.schedule_id
 		WHERE p.namespace=$1 AND f.status='pending' ORDER BY f.last_checked_at,f.created_at LIMIT 100`, namespace)

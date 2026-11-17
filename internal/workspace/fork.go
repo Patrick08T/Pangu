@@ -8,6 +8,7 @@ import (
 	"github.com/Patrick08T/Pangu/internal/diagnostic"
 	"github.com/Patrick08T/Pangu/internal/workflow"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 func EnsureFork(ctx context.Context, id, project, namespace, source, commit string) error {
@@ -46,18 +47,64 @@ func ImportCheckpoints(ctx context.Context, run string, fork *workflow.Fork) (ma
 		if commit == "" {
 			return nil, errors.New("复用节点缺少文件检查点")
 		}
-		value.RunID = uuid.NewSHA1(uuid.MustParse(run), []byte(node)).String()
-		raw, err := json.Marshal(value)
-		if err != nil {
-			return nil, err
-		}
-		_, err = conn.Exec(ctx, `INSERT INTO pangu.workspace_checkpoints(node_run_id,run_id,commit_id,output) VALUES($1,$2,$3,$4) ON CONFLICT(node_run_id) DO NOTHING`, value.RunID, run, commit, raw)
+		value, err = importCheckpoint(ctx, conn, run, node, commit, value, fork.ReportNodes[node], fork.ReportHashes[node])
 		if err != nil {
 			return nil, err
 		}
 		out[node] = value
 	}
 	return out, nil
+}
+
+func importCheckpoint(ctx context.Context, conn *pgx.Conn, run, node, commit string, value workflow.NodeOutput, reportOnly bool, reportHash string, observers ...ImportObserver) (workflow.NodeOutput, error) {
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		return value, err
+	}
+	defer tx.Rollback(context.Background())
+	nodeRun := uuid.NewSHA1(uuid.MustParse(run), []byte(node)).String()
+	if _, err = tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", nodeRun); err != nil {
+		return value, err
+	}
+	var raw []byte
+	var storedCommit string
+	err = tx.QueryRow(ctx, "SELECT commit_id,output FROM pangu.workspace_checkpoints WHERE run_id=$1 AND node_run_id=$2", run, nodeRun).Scan(&storedCommit, &raw)
+	if err == nil {
+		if storedCommit != commit {
+			return value, errors.New("导入检查点已变化")
+		}
+		value = workflow.NodeOutput{} // Do not mutate pointers in the frozen source snapshot.
+		if err = json.Unmarshal(raw, &value); err == nil {
+			err = observeImported(ctx, node, commit, &value, true, observers)
+		}
+		return value, err
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return value, err
+	}
+	reportCommit := commit
+	if reportOnly {
+		reportCommit = ""
+	}
+	value, err = copyReport(ctx, tx, run, nodeRun, reportCommit, reportHash, value)
+	if err != nil {
+		return value, err
+	}
+	if err = observeImported(ctx, node, commit, &value, false, observers); err != nil {
+		return value, err
+	}
+	raw, err = json.Marshal(value)
+	if err != nil {
+		return value, err
+	}
+	if err = SaveReport(ctx, tx, run, nodeRun, value); err != nil {
+		return value, err
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO pangu.workspace_checkpoints(node_run_id,run_id,commit_id,output) VALUES($1,$2,$3,$4)`, nodeRun, run, commit, raw)
+	if err != nil {
+		return value, err
+	}
+	return value, tx.Commit(ctx)
 }
 
 func Checkpoint(ctx context.Context, source, nodeRun string) (string, workflow.NodeOutput, error) {

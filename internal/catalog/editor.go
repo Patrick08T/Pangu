@@ -77,6 +77,14 @@ func (flow Flow) validateDraft() error {
 func coordinate(value float64) bool { return !math.IsNaN(value) && math.Abs(value) <= 1000000 }
 
 func (node Binding) validateStep() error {
+	if node.ReportSchema != nil {
+		if node.ReportSchema.Type != "object" {
+			return invalid("完整报告结构必须为对象")
+		}
+		if _, err := node.ReportSchema.Compile(); err != nil {
+			return err
+		}
+	}
 	if len(node.Task) > 8192 {
 		return invalid("步骤任务最多 8192 字节")
 	}

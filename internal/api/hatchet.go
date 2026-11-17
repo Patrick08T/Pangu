@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Patrick08T/Pangu/internal/approval"
 	"github.com/Patrick08T/Pangu/internal/identity"
 	"io"
 	"mime"
@@ -26,11 +27,14 @@ type Backend interface {
 	Retention(context.Context, bool) ([]workspace.RetentionItem, error)
 	RegisterProject(context.Context, workspace.Project) (*workspace.Project, error)
 	Projects(context.Context) ([]workspace.Project, error)
+	CheckProject(context.Context, workspace.Project) (*workflow.Preflight, error)
+	DeliverPerforce(context.Context, string) (*workspace.P4Delivery, error)
 	Check(context.Context) error
 	Submit(context.Context, workflow.Definition, string) (*submission.Record, error)
 	GetRequest(context.Context, string) (*submission.Record, error)
 	Rerun(context.Context, string, string) (*submission.Record, error)
 	Fork(context.Context, string, string, workflow.ForkInput) (*submission.Record, error)
+	PrepareRepair(context.Context, string, approval.RepairInput) (*approval.Repair, error)
 	GetRun(context.Context, string) (*scheduler.RunDetails, error)
 	Events(context.Context, string, string, int, int) (*scheduler.EventPage, error)
 	ListRuns(context.Context, scheduler.RunQuery) (*scheduler.RunList, error)
@@ -61,11 +65,17 @@ func New(backend Backend, access Access) http.Handler {
 	h.factoryRoutes(mux)
 	h.identityRoutes(mux)
 	h.evaluationRoutes(mux)
+	h.experienceRoutes(mux)
 	h.deliveryRoutes(mux)
 	h.webhookRoutes(mux)
 	h.traceRoutes(mux)
+	h.perforceRoutes(mux)
 	mux.HandleFunc("GET /runs/{id}/usage", h.usage)
+	mux.HandleFunc("GET /runs/{id}/evidence", h.runEvidence)
 	mux.HandleFunc("GET /runs/{id}/approvals", h.approvals)
+	mux.HandleFunc("GET /approvals", h.approvalList)
+	mux.HandleFunc("GET /approvals/{id}", h.approvalDetail)
+	mux.HandleFunc("POST /approvals/{id}/repair", h.prepareRepair)
 	mux.HandleFunc("GET /runs/{id}/reports", h.reports)
 	mux.HandleFunc("PUT /runs/{id}/reports/{report}/claims/{claim}", h.claimReview)
 	mux.HandleFunc("PUT /approvals/{id}", h.decideApproval)
@@ -107,7 +117,7 @@ func New(backend Backend, access Access) http.Handler {
 	mux.HandleFunc("PUT /crons/{id}", h.editCron)
 	mux.HandleFunc("GET /crons/{id}/fires", h.cronFires)
 	mux.HandleFunc("DELETE /crons/{id}", h.deleteCron)
-	return observe(mux, access)
+	return observe(mux, access, h.businessSurface)
 }
 
 func (h handler) submit(w http.ResponseWriter, r *http.Request) {
@@ -185,18 +195,11 @@ func (h handler) createCron(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h handler) listCrons(w http.ResponseWriter, r *http.Request) {
-	for key := range r.URL.Query() {
-		if key != "offset" && key != "project_id" {
-			problem(w, 400, "只接受 offset 和 project_id")
-			return
-		}
-	}
-	offset, err := catalogQuery(r.URL.Query(), false)
+	project, offset, err := projectQuery(r.URL.Query(), false)
 	if err != nil {
 		problem(w, 400, err.Error())
 		return
 	}
-	project := r.URL.Query().Get("project_id")
 	if project != "" && !h.allowed(w, r, project, "read", "") {
 		return
 	}

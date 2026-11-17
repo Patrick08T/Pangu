@@ -1,7 +1,7 @@
 import {useEffect,useState} from 'react';
 import {apiRequest} from '../api/request';
 import {useAction} from '../api/hooks';
-import {ActionNotice,ErrorNotice,Page,canManageCatalog,canEdit,type Access,type Schema} from '../console/components';
+import {ActionNotice,ErrorNotice,Page,canManageCatalog,canEdit,timestamp,type Access,type Schema} from '../console/components';
 import {AssistantLibrary,useVersions} from './catalog';
 import {FlowCanvas} from './canvas';
 import {StepPanel,FlowSettings} from './panel';
@@ -32,7 +32,9 @@ export function FlowStudio({access,item}:{access:Access;item?:Schema['CatalogObj
     if(action.active()){setBase(result);setName(result.name);draft.reset(result.spec.flow!);setPublished(undefined);}
   }
   async function publish(signal:AbortSignal){
-    if(!base)return;const version=await apiRequest<Schema['CatalogVersion']>(`/catalog/${base.id}/publish`,{method:'POST',csrf:access.session.csrf,body:{revision:base.revision},signal});if(action.active())setPublished(version);
+    if(!base)return;const version=await apiRequest<Schema['CatalogVersion']>(`/catalog/${base.id}/publish`,{method:'POST',csrf:access.session.csrf,body:{revision:base.revision},signal});
+    const latest=await apiRequest<Schema['CatalogObject']>(`/catalog/${base.id}`,{signal});
+    if(action.active()){setPublished(version);setBase(current=>current?{...current,updated_at:latest.updated_at}:current);}
   }
   async function archive(signal:AbortSignal){
     if(!base)return;await apiRequest(`/catalog/${base.id}/archive`,{method:'POST',csrf:access.session.csrf,body:{archived:!base.archived},signal});
@@ -44,12 +46,12 @@ export function FlowStudio({access,item}:{access:Access;item?:Schema['CatalogObj
       <button type="button" disabled={disabled||(!dirty&&!!base)} onClick={()=>void action.run(save,'草稿已保存')}>保存草稿</button>
       <button type="button" className="primary" disabled={disabled||dirty||!base||!!problems.length||lookup.loading} onClick={()=>void action.run(publish,'已发布，任务将使用此固定版本')}>发布</button>
       {published&&<a className="button primary" href={`#/start/${published.id}`}>运行此版本</a>}
-    </div><ActionNotice {...action}/><ErrorNotice error={error}/>
+    </div>{base&&<p className="muted">最近更新时间：{timestamp(base.updated_at)}</p>}<ActionNotice {...action}/><ErrorNotice error={error}/>
       <div className="flow-workbench">{writable?<AssistantLibrary disabled={disabled||flow.nodes.length>=32} add={add}/>:<div className="flow-library"><h2>流程步骤</h2>{flow.nodes.map(n=><button type="button" key={n.id} onClick={()=>select(n.id)}>{label(flow,n.id)}</button>)}</div>}
         <FlowCanvas flow={flow} versions={lookup.versions} selected={selected} select={select} disabled={disabled} change={change} problems={problems.flatMap(p=>p.id?[p.id]:[])}/>
-        {step?<StepPanel key={step.id} step={step} flow={flow} versions={lookup.versions} disabled={disabled} change={next=>edit(()=>next)} copy={()=>edit(()=>duplicate(flow,step.id,`step_${crypto.randomUUID().slice(0,8)}`))} remove={()=>{change(removeNodes(flow,[step.id]));select(undefined);}}/>:<FlowSettings flow={flow} change={change} disabled={disabled}/>}
+        {step?<StepPanel key={step.id} step={step} flow={flow} versions={lookup.versions} disabled={disabled} change={next=>edit(()=>next)} copy={()=>edit(()=>duplicate(flow,step.id,`step_${crypto.randomUUID().slice(0,8)}`))} remove={()=>{change(removeNodes(flow,[step.id]));select(undefined);}}/>:<FlowSettings flow={flow} change={change} disabled={disabled} versions={lookup.versions}/>}
       </div>
-      <div className="flow-bottom"><button type="button" onClick={()=>select(undefined)}>流程输入与预算</button><span>{flow.nodes.length} / 32 步骤</span><div className="toolbar"><button type="button" disabled={disabled||!draft.canUndo} onClick={draft.undo}>撤销</button><button type="button" disabled={disabled||!draft.canRedo} onClick={draft.redo}>重做</button><button type="button" disabled={disabled||!flow.nodes.length} onClick={()=>change(arrange(flow))}>自动排列</button></div></div>
+      <div className="flow-bottom"><button type="button" onClick={()=>select(undefined)}>流程输入与预算</button><button type="button" onClick={()=>select(undefined)}>循环块设置</button><span>{flow.nodes.length} / 32 步骤</span><div className="toolbar"><button type="button" disabled={disabled||!draft.canUndo} onClick={draft.undo}>撤销</button><button type="button" disabled={disabled||!draft.canRedo} onClick={draft.redo}>重做</button><button type="button" disabled={disabled||!flow.nodes.length} onClick={()=>change(arrange(flow))}>自动排列</button></div></div>
       {problems.length>0&&<div className="flow-issues"><strong>发布前还需处理 {problems.length} 项</strong>{problems.map((problem,i)=><button type="button" key={i} onClick={()=>select(problem.id)}>{problem.message}</button>)}</div>}
     </div>
     {base&&<FlowVersions key={`${base.id}:${base.revision}:${published?.id}`} id={base.id} canRun={canEdit(access)&&!!access.project}/>}

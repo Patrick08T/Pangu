@@ -13,6 +13,9 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// 登录凭证固定有效 30 天；Cookie 与数据库使用同一时长，访问不续期。
+const sessionLifetimeSeconds = 30 * 24 * 60 * 60
+
 type Actor struct {
 	ID        string   `json:"id"`
 	Name      string   `json:"name"`
@@ -70,7 +73,7 @@ func login(ctx context.Context, namespace string, cfg Config, external FeishuUse
 	if err != nil {
 		return Actor{}, "", err
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO pangu.sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '12 hours')`, digest(token), actor.ID)
+	_, err = tx.Exec(ctx, `INSERT INTO pangu.sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+$3::int*interval '1 second')`, digest(token), actor.ID, sessionLifetimeSeconds)
 	if err != nil {
 		return Actor{}, "", err
 	}

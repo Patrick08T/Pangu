@@ -8,10 +8,14 @@ import (
 )
 
 func outputInstruction(node workflow.Node) string {
-	if node.OutputSchema == nil {
+	shape := node.OutputSchema
+	if node.ReportSchema != nil {
+		shape = node.ReportSchema
+	}
+	if shape == nil {
 		return node.Instruction
 	}
-	data, _ := json.Marshal(node.OutputSchema)
+	data, _ := json.Marshal(shape)
 	return node.Instruction + "\n最终输出必须是符合以下结构的 JSON 对象，不添加 Markdown 围栏或未声明字段：" + string(data)
 }
 
@@ -32,6 +36,12 @@ func Execute(ctx context.Context, input workflow.NodeInput) (workflow.NodeOutput
 	}
 	if err := ctx.Err(); err != nil {
 		return output, err
+	}
+	if input.Node.ReportSchema != nil {
+		output, err = reportOutput(input.Node, output)
+		if err != nil {
+			return output, &workflow.Failure{Kind: "output", Cause: err}
+		}
 	}
 	err = workflow.ValidateOutput(input.Node, &output)
 	if err != nil {

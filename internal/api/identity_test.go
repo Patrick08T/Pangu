@@ -45,6 +45,10 @@ func TestProjectActionsCannotBypassAuthorization(t *testing.T) {
 		{"GET", "/runs/" + testID + "/artifacts", ""},
 		{"POST", "/runs/" + testID + "/cancel", ""},
 		{"POST", "/runs/" + testID + "/rerun", ""},
+		{"POST", "/projects/check", "{}"},
+		{"PATCH", "/projects/" + testID + "/workspace", `{"source":"C:/project"}`},
+		{"GET", "/runs/" + testID + "/perforce", ""},
+		{"POST", "/runs/" + testID + "/perforce", ""},
 	} {
 		b := &fakeBackend{}
 		h := New(b, testAccess{authorize: func(_ context.Context, _, _, _ string) error { return identity.ErrForbidden }})
@@ -56,7 +60,7 @@ func TestProjectActionsCannotBypassAuthorization(t *testing.T) {
 		if w.Code != 403 {
 			t.Errorf("%s %s: %d %s", tc.method, tc.path, w.Code, w.Body.String())
 		}
-		if len(b.definition.Nodes) != 0 || len(b.cron.Workflow.Nodes) != 0 {
+		if b.mutations != 0 || len(b.definition.Nodes) != 0 || len(b.cron.Workflow.Nodes) != 0 {
 			t.Error("越权请求已提交")
 		}
 	}

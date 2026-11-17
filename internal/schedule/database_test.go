@@ -29,7 +29,7 @@ func schedulePlan(t *testing.T) *Plan {
 	}
 	defer conn.Close(ctx)
 	project := uuid.NewString()
-	_, err = conn.Exec(ctx, `INSERT INTO pangu.projects(id,namespace,name,source,branch,worker_id) VALUES($1,'schedule-test','计划测试','unused','main','test')`, project)
+	_, err = conn.Exec(ctx, `INSERT INTO pangu.projects(vcs,id,namespace,name,source,branch,worker_id) VALUES('git',$1,'schedule-test','计划测试','unused','main','test')`, project)
 	if err != nil {
 		t.Fatal(err)
 	}

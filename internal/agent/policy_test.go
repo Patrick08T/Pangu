@@ -13,7 +13,7 @@ func TestModelErrorsPreserveRetryClassification(t *testing.T) {
 		status   int
 		category string
 		retry    bool
-	}{{400, "parameter", false}, {401, "authentication", false}, {403, "authentication", false}, {429, "rate_limit", true}, {503, "execution", true}} {
+	}{{400, "parameter", false}, {401, "authentication", false}, {403, "authentication", false}, {429, "rate_limit", true}, {503, "model_unavailable", true}} {
 		err := classify(&openai.APIError{HTTPStatusCode: item.status, Message: "测试错误"})
 		if workflow.FailureKind(err) != item.category || workflow.CanRetry(err) != item.retry {
 			t.Fatalf("%d 分类错误: %v", item.status, err)

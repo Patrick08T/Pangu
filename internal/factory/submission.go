@@ -45,7 +45,7 @@ func Prepare(ctx context.Context, ns, id string, in Input, d workflow.Definition
 	}
 	previous, err := scanTurn(tx.QueryRow(ctx, "SELECT "+turnColumns+" FROM pangu.factory_turns WHERE session_id=$1 AND id=$2", id, in.ID))
 	if err == nil {
-		if previous.Input != in {
+		if !previous.Input.Equal(in) {
 			return nil, catalog.ErrConflict
 		}
 		return submission.Get(ctx, ns, previous.RequestID)

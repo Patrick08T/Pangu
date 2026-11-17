@@ -22,7 +22,7 @@ func (b Backend) CancelRun(ctx context.Context, id string) (*Cancellation, error
 	if err != nil {
 		return nil, err
 	}
-	if details.StopConfirmed && (details.Status == "succeeded" || details.Status == "failed") {
+	if details.Successor == nil && details.StopConfirmed && (details.Status == "succeeded" || details.Status == "failed") {
 		return &Cancellation{RunID: id}, nil
 	}
 	if err := execution.RequestCancel(ctx, b.client.NewWorkflow(WorkflowName).GetName(), id); err != nil {
@@ -93,6 +93,7 @@ func (b Backend) Reconcile(ctx context.Context) error {
 }
 
 func (b Backend) Maintain(ctx context.Context) {
+	state := &experienceMaintenanceState{}
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {
@@ -100,11 +101,17 @@ func (b Backend) Maintain(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			if err := b.maintainExperienceBeforeCancel(ctx, state); err != nil {
+				slog.Warn("经验失效与保留维护未完成，将重试")
+			}
 			check, cancel := context.WithTimeout(ctx, 10*time.Second)
 			if err := b.Reconcile(check); err != nil {
 				slog.Warn("取消对账未完成，将重试")
 			}
 			cancel()
+			if err := b.maintainExperienceDrive(ctx, state); err != nil {
+				slog.Warn("自动进化对账未完成，将重试")
+			}
 			check, cancel = context.WithTimeout(ctx, 10*time.Second)
 			if err := b.ReconcileCrons(check); err != nil {
 				slog.Warn("计划注册对账未完成，将重试")

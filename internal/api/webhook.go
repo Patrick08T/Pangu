@@ -42,16 +42,9 @@ func (h handler) createGithubHook(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h handler) githubHooks(w http.ResponseWriter, r *http.Request) {
-	for key := range r.URL.Query() {
-		if key != "project_id" && key != "offset" {
-			problem(w, 400, "只接受 project_id 和 offset")
-			return
-		}
-	}
-	project := r.URL.Query().Get("project_id")
-	offset, err := catalogQuery(r.URL.Query(), false)
-	if _, idErr := uuid.Parse(project); idErr != nil || err != nil {
-		problem(w, 400, "需要 project_id 和有效 offset")
+	project, offset, err := projectQuery(r.URL.Query(), true)
+	if err != nil {
+		problem(w, 400, err.Error())
 		return
 	}
 	if !h.allowed(w, r, project, "manage_connections", "") {

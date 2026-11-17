@@ -9,7 +9,7 @@ import (
 	"github.com/Patrick08T/Pangu/internal/scheduler"
 	"github.com/Patrick08T/Pangu/internal/workflow"
 	"github.com/google/uuid"
-	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -47,60 +47,85 @@ func awaitApproval(t *testing.T, namespace, run string) *approval.Gate {
 	return nil
 }
 
-func TestHatchetApprovalSurvivesWorkerRestart(t *testing.T) {
-	if os.Getenv("PANGU_TEST_BINARY") == "" {
-		t.Skip("需要构建后的 Worker")
-	}
-	model, client := integrationClient(t)
-	backend := scheduler.NewBackend(client)
+func TestHatchetApprovalWaitsUntilDecision(t *testing.T) {
+	model, backend, _ := approvalIntegrationSetup(t)
 	project := registerTestProject(t, backend)
 	actor := approvalActor(t, backend.Namespace())
 	ctx := identity.WithActor(context.Background(), actor)
-	process := startProcess(t)
-	awaitWorker(t, backend)
-	d := workflow.Definition{ProjectID: project.ID, Input: "批准后执行", Nodes: []workflow.Node{{ID: "build", Executor: "eino", Model: "approved", Handoff: testHandoff(), Instruction: "执行", Approval: &workflow.Approval{TimeoutSeconds: 120}}}}
-	submitted, err := backend.Submit(ctx, d, "approval-restart")
+	d := approvalWorkflow(project.ID, "waiting")
+	submitted, err := backend.Submit(ctx, d, "approval-wait")
 	if err != nil || submitted.RunID == "" {
 		t.Fatalf("提交: %+v %v", submitted, err)
 	}
 	gate := awaitApproval(t, backend.Namespace(), submitted.RunID)
-	if model.count("approved") != 0 {
-		t.Fatal("未批准即执行")
+	out, err := backend.GetRun(ctx, submitted.RunID)
+	if err != nil || out.Status != "waiting_approval" || out.StopConfirmed || model.count("waiting") != 0 {
+		t.Fatalf("未进入待审批状态: %+v %v calls=%d", out, err, model.count("waiting"))
 	}
-	if err = process.Process.Kill(); err != nil {
-		t.Fatal(err)
+	q := scheduler.RunQuery{ProjectID: project.ID, Status: "waiting_approval", Limit: 20, Since: time.Now().Add(-time.Hour), Until: time.Now()}
+	items, err := backend.ListRuns(ctx, q)
+	if err != nil || len(items.Items) != 1 || items.Items[0].ID != submitted.RunID {
+		t.Fatalf("待审批列表缺少运行: %+v %v", items, err)
 	}
-	_ = process.Wait()
-	decision := approval.Decision{SubjectHash: gate.SubjectHash, Decision: "approved", Reason: "已核对固定输入与产物"}
-	if _, err = approval.Decide(ctx, actor, gate.ID, decision); err != nil {
+	if _, err = approval.Decide(ctx, actor, gate.ID, approval.Decision{SubjectHash: gate.SubjectHash, Decision: "approved", Items: []workflow.ReviewAnswer{{ItemID: "scope", Decision: "accept"}}}); err != nil {
 		t.Fatal(err)
 	}
 	if err = backend.ReconcileApprovals(ctx); err != nil {
 		t.Fatal(err)
 	}
-	startProcess(t)
-	out := waitRun(t, api.New(backend, integrationAccess{}), submitted.RunID)
-	if out.Status != "succeeded" || model.count("approved") != 1 {
-		t.Fatalf("恢复或重复执行: %s calls=%d error=%+v", out.Status, model.count("approved"), out.Error)
-	}
-	current, err := approval.Get(ctx, backend.Namespace(), gate.ID)
-	if err != nil || current.Status != "consumed" {
-		t.Fatalf("批准未绑定实际执行: %+v %v", current, err)
+	finished := waitRun(t, api.New(backend, integrationAccess{}), submitted.RunID)
+	if finished.Status != "succeeded" || model.count("waiting") != 1 {
+		t.Fatalf("批准后没有正确恢复: %s calls=%d", finished.Status, model.count("waiting"))
 	}
 }
 
-func TestHatchetApprovalExpiryNeverCallsModel(t *testing.T) {
-	model, backend, _ := integrationSetup(t)
+func TestHatchetApprovalRejectionStopsBeforeModel(t *testing.T) {
+	model, backend, _ := approvalIntegrationSetup(t)
 	project := registerTestProject(t, backend)
 	actor := approvalActor(t, backend.Namespace())
 	ctx := identity.WithActor(context.Background(), actor)
-	d := workflow.Definition{ProjectID: project.ID, Nodes: []workflow.Node{{ID: "build", Executor: "eino", Model: "expired", Handoff: testHandoff(), Instruction: "禁止过期执行", Approval: &workflow.Approval{TimeoutSeconds: 1}}}}
-	submitted, err := backend.Submit(ctx, d, "approval-expiry")
-	if err != nil || submitted.RunID == "" {
-		t.Fatalf("提交: %+v %v", submitted, err)
+	d := approvalWorkflow(project.ID, "rejected")
+	submitted, err := backend.Submit(ctx, d, "approval-rejected")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gate := awaitApproval(t, backend.Namespace(), submitted.RunID)
+	if _, err = approval.Decide(ctx, actor, gate.ID, approval.Decision{SubjectHash: gate.SubjectHash, Decision: "rejected", Reason: "范围不符合要求"}); err != nil {
+		t.Fatal(err)
+	}
+	if err = backend.ReconcileApprovals(ctx); err != nil {
+		t.Fatal(err)
 	}
 	out := waitFailedRun(t, backend, submitted.RunID)
-	if out.Status != "failed" || model.count("expired") != 0 {
-		t.Fatalf("过期执行: %s calls=%d", out.Status, model.count("expired"))
+	if model.count("rejected") != 0 || out.Error == nil || !strings.Contains(out.Error.Message, "rejected") {
+		t.Fatalf("驳回后仍执行或原因不明: calls=%d error=%+v", model.count("rejected"), out.Error)
 	}
+}
+
+func TestHatchetWaitingApprovalCanBeCancelled(t *testing.T) {
+	model, backend, _ := approvalIntegrationSetup(t)
+	project := registerTestProject(t, backend)
+	actor := approvalActor(t, backend.Namespace())
+	ctx := identity.WithActor(context.Background(), actor)
+	d := approvalWorkflow(project.ID, "cancelled")
+	submitted, err := backend.Submit(ctx, d, "approval-cancelled")
+	if err != nil {
+		t.Fatal(err)
+	}
+	awaitApproval(t, backend.Namespace(), submitted.RunID)
+	if _, err = backend.CancelRun(ctx, submitted.RunID); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		out, err := backend.GetRun(ctx, submitted.RunID)
+		if err == nil && out.Status == "cancelled" && out.StopConfirmed {
+			if model.count("cancelled") != 0 {
+				t.Fatal("取消后执行模型")
+			}
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatal("待审批运行无法取消")
 }

@@ -52,8 +52,9 @@ func List(ctx context.Context, run string, query Query) (*Page, error) {
 	defer conn.Close(context.Background())
 	rows, err := conn.Query(ctx, `SELECT id,run_id::text,node_id,node_run_id::text,attempt,span_id,parent_span_id,kind,phase,name,occurred_at,duration_ms,status,input,output,error,truncated
 	 FROM pangu.trace_events WHERE run_id=$1 AND id>$2 AND ($3::bigint=0 OR id<$3)
-	 AND ($4='' OR node_id=$4) AND ($5='' OR kind=$5) AND ($6='' OR status=$6) ORDER BY id DESC LIMIT $7`,
-		run, query.After, query.Before, query.NodeID, query.Kind, query.Status, query.Limit+1)
+	 AND ($4='' OR node_id=$4) AND ($5='' OR kind=$5) AND ($6='' OR status=$6)
+	 AND ($8='' OR node_run_id::text=$8) ORDER BY id DESC LIMIT $7`,
+		run, query.After, query.Before, query.NodeID, query.Kind, query.Status, query.Limit+1, query.NodeRunID)
 	if err != nil {
 		return nil, err
 	}

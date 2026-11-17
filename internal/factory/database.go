@@ -15,11 +15,11 @@ const sessionColumns = `id::text,project_id::text,coalesce(created_by::text,''),
 const turnColumns = `id::text,coalesce(request_id::text,''),input,skill_digest,status,reply,error,result,created_at`
 
 func Pending(ctx context.Context, ns string) ([]string, error) {
-	conn, err := database.Open(ctx)
+	conn, err := database.Acquire(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close(context.Background())
+	defer conn.Release()
 	rows, err := conn.Query(ctx, `SELECT s.id::text FROM pangu.factory_sessions s WHERE s.namespace=$1 AND EXISTS(SELECT 1 FROM pangu.factory_turns t WHERE t.session_id=s.id AND t.status='pending') ORDER BY s.updated_at LIMIT 100`, ns)
 	if err != nil {
 		return nil, err

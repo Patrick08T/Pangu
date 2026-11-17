@@ -30,13 +30,13 @@ func (m *codexModel) WithTools(tools []*schema.ToolInfo) (model.ToolCallingChatM
 func (m *codexModel) Generate(ctx context.Context, messages []*schema.Message, opts ...model.Option) (*schema.Message, error) {
 	o := model.GetCommonOptions(&model.Options{Tools: m.tools}, opts...)
 	if o.Model != nil || o.Temperature != nil || o.TopP != nil || o.MaxTokens != nil || len(o.Stop) != 0 || o.ToolChoice != nil || len(o.AllowedToolNames) != 0 || o.AgenticToolChoice != nil || len(o.DeferredTools) != 0 || o.ToolSearchTool != nil {
-		return nil, errors.New("Codex 模型桥接仅支持工具定义；模型由固定连接版本指定")
+		return nil, errors.New("Codex 模型桥接仅支持工具定义；模型由节点运行快照指定")
 	}
 	c, _, err := catalog.ResolveConnection(ctx, m.input.ProjectID, m.input.Node.ConnectionVersion)
 	if err != nil {
 		return nil, err
 	}
-	if c.Provider != "codex" || c.Model != m.input.Node.Model {
+	if c.Provider != "codex" {
 		return nil, errors.New("Codex 模型连接与节点不一致")
 	}
 	return codexTurn(ctx, m.input, messages, o.Tools)
@@ -70,7 +70,7 @@ func codexTurn(ctx context.Context, input workflow.NodeInput, messages []*schema
 		return nil, err
 	}
 	input.Workspace, input.Input, input.Parents, input.Parameters = dir, prompt, nil, nil
-	input.Node = workflow.Node{ID: input.Node.ID, Executor: "codex", Model: input.Node.Model, ReadOnly: true,
+	input.Node = workflow.Node{ID: input.Node.ID, Executor: "codex", Model: input.Node.Model, ReasoningEffort: input.Node.ReasoningEffort, Fast: input.Node.Fast, ReadOnly: true,
 		Instruction: "你是 Eino 的模型后端。根据 input.messages 中完整对话生成下一条 assistant 回复，遵守其中 system 指令。input.tools 是仅可请求 Eino 执行的工具定义，不是本机工具。需要工具时只返回一个 tool_calls 项，arguments 为 JSON 对象字符串；普通回答填写 content 且 tool_calls 为空数组。不要调用任何原生工具，不读取本机文件。严格按输出结构返回 JSON。",
 		Policy:      &workflow.Policy{}}
 	result, err := runCodex(ctx, input, path, nil)

@@ -25,7 +25,7 @@ export function QueryState({ loading, error, empty, retry }: { loading: boolean;
   return <>{loading && <p role="status">正在读取…</p>}<ErrorNotice error={error} retry={retry} />{!loading && !error && empty && <p className="empty">{empty}</p>}</>;
 }
 
-const statuses: Record<string, string> = { queued: '排队中', running: '执行中', cancelling: '取消中', cancelled: '已取消', succeeded: '已完成', failed: '失败', unknown: '结果未知', pending: '等待确认', accepted: '已接受', skipped: '已跳过', rejected: '已拒绝' };
+const statuses: Record<string, string> = { queued: '排队中', running: '执行中', waiting_retry:'等待模型重试', waiting_approval: '待审批', revising_plan:'计划修订中', cancelling: '取消中', cancelled: '已取消', succeeded: '已完成', failed: '失败', unknown: '结果未知', pending: '等待确认', accepted: '已接受', skipped: '已跳过', rejected: '已拒绝' };
 export function Status({ value }: { value: string }) { return <span className={`status status-${value}`}>{statuses[value] ?? value}</span>; }
 
 export function JSONField({ label, value, onChange, disabled, rows = 12 }: { label: string; value: string; onChange: (v: string) => void; disabled?: boolean; rows?: number }) {
