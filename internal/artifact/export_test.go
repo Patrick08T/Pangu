@@ -40,7 +40,7 @@ func artifactRun(t *testing.T) string {
 			t.Fatalf("Git测试夹具: %s %v", data, err)
 		}
 	}
-	project, err := workspace.Register(ctx, "artifact", workspace.Project{Name: "产物", Source: source, Branch: "main", WorkerID: "artifact-test"})
+	project, err := workspace.Register(ctx, "artifact", workspace.Project{VCS: "git", Name: "产物", Source: source, Branch: "main", WorkerID: "artifact-test"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -22,7 +22,7 @@ func TestRolesTokenScopesAndMembershipChangesUseCurrentSource(t *testing.T) {
 	defer conn.Close(ctx)
 	project, foreign := uuid.NewString(), uuid.NewString()
 	for _, id := range []string{project, foreign} {
-		if _, err = conn.Exec(ctx, `INSERT INTO pangu.projects(id,namespace,name,source,branch,worker_id) VALUES($1,$2,'test','test','main','test')`, id, ns); err != nil {
+		if _, err = conn.Exec(ctx, `INSERT INTO pangu.projects(vcs,id,namespace,name,source,branch,worker_id) VALUES('git',$1,$2,'test','test','main','test')`, id, ns); err != nil {
 			t.Fatal(err)
 		}
 	}

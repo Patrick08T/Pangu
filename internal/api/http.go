@@ -8,8 +8,12 @@ import (
 	"github.com/google/uuid"
 )
 
-func observe(mux *http.ServeMux, access Access) http.Handler {
-	next := http.TimeoutHandler(access.Handler(mux), 30*time.Second, `{"error":"请求超时"}`)
+func observe(mux *http.ServeMux, access Access, guards ...func(http.Handler) http.Handler) http.Handler {
+	var target http.Handler = mux
+	for _, guard := range guards {
+		target = guard(target)
+	}
+	next := http.TimeoutHandler(access.Handler(target), 30*time.Second, `{"error":"请求超时"}`)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id, started := uuid.NewString(), time.Now()
 		_, pattern := mux.Handler(r)

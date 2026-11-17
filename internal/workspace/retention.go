@@ -52,7 +52,7 @@ func Lease(ctx context.Context, id string) (func(), error) {
 }
 
 // Expire 由调度层确认整次运行终结满30天后调用；磁盘删除前持久记录到期意图。
-func Expire(ctx context.Context, id string, finishedAt time.Time) error {
+func Expire(ctx context.Context, id string, finishedAt time.Time) (outcome error) {
 	before := time.Now().Add(-30 * 24 * time.Hour)
 	if finishedAt.IsZero() || finishedAt.After(before) {
 		return errors.New("运行终结尚未满30天")
@@ -62,6 +62,11 @@ func Expire(ctx context.Context, id string, finishedAt time.Time) error {
 		return err
 	}
 	defer conn.Close(context.Background())
+	ctx, finish, err := beginRunLocalOperation(ctx, conn, id, false)
+	if err != nil {
+		return err
+	}
+	defer func() { outcome = finish(outcome) }()
 	var locked bool
 	if err = conn.QueryRow(ctx, "SELECT pg_try_advisory_lock(hashtextextended($1,0))", "retention:"+id).Scan(&locked); err != nil {
 		return err
@@ -83,6 +88,9 @@ func Expire(ctx context.Context, id string, finishedAt time.Time) error {
 	if err != nil || record.WorkerID != WorkerID() || !samePath(record.Directory, filepath.Join(root, id)) {
 		return errors.New("拒绝清理非当前 Worker 的托管目录")
 	}
+	if err = retainPerforce(ctx, conn, id, record.Directory); err != nil {
+		return err
+	}
 	result, err := conn.Exec(ctx, `UPDATE pangu.workspace_runs SET expired_at=coalesce(expired_at,now()),finished_at=coalesce(finished_at,$3) WHERE run_id=$1 AND created_at<$2
  AND NOT EXISTS(SELECT 1 FROM pangu.node_attempts WHERE run_id=$1 AND (finished_at IS NULL OR finished_at>=$2))`, id, before, finishedAt)
 	if err != nil {
@@ -90,6 +98,9 @@ func Expire(ctx context.Context, id string, finishedAt time.Time) error {
 	}
 	if result.RowsAffected() != 1 {
 		return errors.New("运行仍活跃或保留期未到")
+	}
+	if err = removePerforceClient(ctx, conn, id, record.Directory); err != nil {
+		return err
 	}
 	directory, err := os.OpenRoot(root)
 	if err != nil {
@@ -112,6 +123,7 @@ func clearExpiredData(ctx context.Context, conn *pgx.Conn, id string) error {
 		`UPDATE pangu.schedules p SET active_slot=NULL FROM pangu.schedule_fires f,pangu.submissions s WHERE p.id=f.schedule_id AND p.active_slot=f.slot AND f.request_id=s.id AND s.run_id=$1`,
 		"DELETE FROM pangu.workspace_checkpoints WHERE run_id=$1",
 		"DELETE FROM pangu.workspace_attempts WHERE run_id=$1",
+		"DELETE FROM pangu.perforce_sources WHERE run_id=$1",
 		"DELETE FROM pangu.research_reports WHERE run_id=$1",
 		"UPDATE pangu.node_attempts SET message='',truncated=true,evidence='[]'::jsonb,evidence_truncated=true WHERE run_id=$1",
 		`WITH done AS (UPDATE pangu.workspace_runs SET purged_at=now() WHERE run_id=$1 AND purged_at IS NULL RETURNING *)

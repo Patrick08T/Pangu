@@ -65,10 +65,16 @@ func Record(ctx context.Context, event Event) error {
 	if event.Kind != "node" && event.Kind != "model" && event.Kind != "tool" {
 		return errors.New("不支持的行为追踪类型")
 	}
-	for _, field := range []*string{&event.Name, &event.Input, &event.Output, &event.Error} {
+	for _, field := range []*string{&event.Name, &event.Input, &event.Error} {
 		value, clipped := diagnostic.Text(*field, 8192)
 		*field, event.Truncated = value, event.Truncated || clipped
 	}
+	limit := 8192
+	if event.Kind == "node" {
+		limit = 16384
+	}
+	output, clipped := diagnostic.Text(event.Output, limit)
+	event.Output, event.Truncated = output, event.Truncated || clipped
 	if err := sink(ctx, event); err != nil {
 		return &workflow.Failure{Kind: "trace", Cause: err}
 	}

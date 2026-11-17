@@ -64,10 +64,11 @@ func executeEino(ctx context.Context, input workflow.NodeInput) (workflow.NodeOu
 
 func runEino(ctx context.Context, a adk.Agent, input workflow.NodeInput) (workflow.NodeOutput, error) {
 	payload, err := json.Marshal(struct {
-		Input      string                         `json:"input"`
-		Parents    map[string]workflow.NodeOutput `json:"parents"`
-		Parameters map[string]any                 `json:"parameters,omitempty"`
-	}{input.Input, input.Parents, input.Parameters})
+		Input       string                         `json:"input"`
+		Parents     map[string]workflow.NodeOutput `json:"parents"`
+		Parameters  map[string]any                 `json:"parameters,omitempty"`
+		Experiences []workflow.Experience          `json:"experiences,omitempty"`
+	}{input.Input, input.Parents, input.Parameters, input.Experiences})
 	if err != nil {
 		return workflow.NodeOutput{}, err
 	}
@@ -109,7 +110,7 @@ func einoModel(ctx context.Context, input workflow.NodeInput) (model.ToolCalling
 		if err != nil {
 			return nil, err
 		}
-		if connection.Model != input.Node.Model {
+		if connection.Provider != "codex" && connection.Model != input.Node.Model {
 			return nil, fmt.Errorf("节点模型与连接版本不一致")
 		}
 		if connection.Provider == "codex" {
@@ -124,6 +125,9 @@ func einoModel(ctx context.Context, input workflow.NodeInput) (model.ToolCalling
 }
 
 func modelConfig(node workflow.Node, connection *catalog.Connection, key string) (*openai.ChatModelConfig, error) {
+	if node.HasModelOptions() {
+		return nil, fmt.Errorf("当前模型 API 不支持 Codex 推理强度和 Fast 选项")
+	}
 	var price *workflow.Price
 	config := &openai.ChatModelConfig{APIKey: os.Getenv("OPENAI_API_KEY"), BaseURL: os.Getenv("OPENAI_BASE_URL"), Model: node.Model}
 	if connection != nil {

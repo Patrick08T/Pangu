@@ -21,7 +21,7 @@ func TestAbsentBudgetDoesNotImposeDefaultCallLimits(t *testing.T) {
 		t.Fatal(err)
 	}
 	ns, run := uuid.NewString(), uuid.NewString()
-	project, err := workspace.Register(ctx, ns, workspace.Project{Name: "无隐式预算", Source: t.TempDir(), Branch: "main", WorkerID: "test"})
+	project, err := workspace.Register(ctx, ns, workspace.Project{VCS: "git", Name: "无隐式预算", Source: t.TempDir(), Branch: "main", WorkerID: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}

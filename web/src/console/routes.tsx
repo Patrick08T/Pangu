@@ -12,6 +12,7 @@ import {Audit} from '../identity/audit';
 import {Projects} from '../identity/project';
 import {Tokens} from '../identity/token';
 import {RunDetail} from '../runs/detail';
+import {ApprovalCenter,ApprovalDetail} from '../approval/workflow';
 import {Runs} from '../runs/list';
 import {RequestReceipt,Start} from '../runs/submission';
 import {NewSchedule,ScheduleDetail,Schedules} from '../schedule/list';
@@ -20,6 +21,7 @@ import {Settings} from './settings';
 const FlowStudio=lazy(()=>import('../flow/editor').then(module=>({default:module.FlowStudio})));
 const Factory=lazy(()=>import('../factory/workflow').then(module=>({default:module.Factory})));
 
+const ExperienceConsole=lazy(()=>import('../experience/console').then(module=>({default:module.ExperienceConsole})));
 const kinds=['agent','workflow','connection'];
 export function Routes({route,access,projects,reload}:{route:string;access:Access;projects:Schema['Project'][];reload:()=>void}) {
   const [page,id,extra]=route.split('/').filter(Boolean);
@@ -33,12 +35,14 @@ export function Routes({route,access,projects,reload}:{route:string;access:Acces
   if(kinds.includes(page))return <Catalog access={access} kind={page}/>;
   if(!access.project)return <Projects access={access} projects={projects} reload={reload}/>;
   if(page==='factory'||!page)return <Suspense fallback={<p role="status">正在打开工厂助手…</p>}><Factory access={access} id={id}/></Suspense>;
+  if(page==='experience')return <Suspense fallback={<p role="status">正在打开经验控制台…</p>}><ExperienceConsole access={access}/></Suspense>;
   if(page==='quality')return <Quality access={access}/>;
   if(page==='github')return isManager(access)?<GithubHooks access={access}/>:<p>事件入口仅由项目管理者配置。</p>;
   if(page==='deliveries')return id?<DeliveryDetail id={id} access={access}/>:<Deliveries access={access}/>;
   if(page==='evaluations')return id?<CaseDetail id={id} access={access}/>:<Cases access={access}/>;
   if(page==='audit')return isManager(access)?<Audit access={access}/>:<p>审计记录仅向管理者开放。</p>;
   if(page==='runs'&&id)return <RunDetail access={access} id={id}/>;
+  if(page==='approvals')return id?<ApprovalDetail id={id} access={access}/>:<ApprovalCenter access={access}/>;
   if(page==='runs')return <Runs access={access}/>;
   if(page==='advanced-run')return <Start access={access}/>;
   if(page==='requests'&&id)return <RequestReceipt id={id}/>;

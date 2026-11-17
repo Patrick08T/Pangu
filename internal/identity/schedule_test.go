@@ -28,7 +28,7 @@ func TestDisablePausesOwnedSchedulesAndPreservesAcceptedFire(t *testing.T) {
 	}
 	defer conn.Close(ctx)
 	ns, project, adminID, userID := uuid.NewString(), uuid.NewString(), uuid.NewString(), uuid.NewString()
-	_, err = conn.Exec(ctx, `INSERT INTO pangu.projects(id,namespace,name,source,branch,worker_id) VALUES($1,$2,'test','test','main','worker')`, project, ns)
+	_, err = conn.Exec(ctx, `INSERT INTO pangu.projects(vcs,id,namespace,name,source,branch,worker_id) VALUES('git',$1,$2,'test','test','main','worker')`, project, ns)
 	if err != nil {
 		t.Fatal(err)
 	}

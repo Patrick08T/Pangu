@@ -35,7 +35,7 @@ func TestMain(m *testing.M) {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "debug":
-			fmt.Print(`{"models":[{"slug":"bridge","visibility":"list"},{"slug":"checkpoint-source","visibility":"list"},{"slug":"checkpoint-recover","visibility":"list"}]}`)
+			fmt.Print(`{"models":[{"slug":"bridge","visibility":"list"},{"slug":"checkpoint-source","visibility":"list"},{"slug":"checkpoint-recover","visibility":"list"},{"slug":"options","visibility":"list","supported_reasoning_levels":[{"effort":"low"},{"effort":"high"}],"service_tiers":[{"id":"priority"}]},{"slug":"options-bridge","visibility":"list","supported_reasoning_levels":[{"effort":"high"}],"service_tiers":[{"id":"priority"}]}]}`)
 			os.Exit(0)
 		case "linger":
 			time.Sleep(30 * time.Second)
@@ -90,7 +90,7 @@ func TestCodexOutputUsesSeparateBridgeAndSummaryLimits(t *testing.T) {
 			if size <= limit && (err != nil || len(out) != size) {
 				t.Fatalf("允许的回复被截断: size=%d limit=%d err=%v", size, limit, err)
 			}
-			if size > limit && (workflow.FailureKind(err) != "output" || workflow.CanRetry(err) || out != "") {
+			if size > limit && (workflow.FailureKind(err) != "output" || workflow.CanRetry(err) || len(out) > 8192 || !strings.Contains(err.Error(), fmt.Sprintf("正文=%d", size))) {
 				t.Fatalf("超限回复未明确拒绝: size=%d limit=%d err=%v", size, limit, err)
 			}
 		}
@@ -120,6 +120,13 @@ func codexHelper() int {
 	var input workflow.NodeInput
 	if json.Unmarshal(data, &input) != nil {
 		return 2
+	}
+	if input.Node.Model == "options-bridge" {
+		body, _ := json.Marshal(map[string]any{"content": strings.Join(os.Args, " "), "tool_calls": []any{}})
+		if os.WriteFile(args["--output-last-message"], body, 0600) != nil {
+			return 36
+		}
+		return 0
 	}
 	if input.Node.Model == "bridge" {
 		return codexBridgeHelper(data, args)
@@ -162,6 +169,9 @@ func codexHelper() int {
 	}
 	if input.Node.Model == "large" {
 		result = []byte(strings.Repeat("x", 16385))
+	}
+	if input.Node.Model == "report-fixture" {
+		result = []byte(input.Input)
 	}
 	if os.WriteFile(args["--output-last-message"], result, 0600) != nil {
 		return 4
@@ -221,6 +231,27 @@ func TestFailedNativeOutputRetainsCommandEvidence(t *testing.T) {
 		if err == nil || len(out.Evidence) != 1 || out.Evidence[0].ExitCode != 0 {
 			t.Fatalf("%s 的错误丢失原生命令证据: %+v %v", model, out, err)
 		}
+	}
+}
+
+func TestCodexReceivesApprovedPlanAsExecutionScope(t *testing.T) {
+	setupCodex(t)
+	input := codexInput("model")
+	input.ApprovalID = "approved-round-two"
+	input.Node.Approval = &workflow.Approval{SourceNode: "plan", RevisionNodes: []string{"plan"}}
+	input.Parents["plan"] = workflow.NodeOutput{Text: "新版范围：只写文档"}
+	out, err := Execute(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var captured struct {
+		Input workflow.NodeInput `json:"input"`
+	}
+	if err = json.Unmarshal([]byte(out.Text), &captured); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(captured.Input.Node.Instruction, "本轮已批准计划") || captured.Input.Parents["plan"].Text != input.Parents["plan"].Text {
+		t.Fatal("未明确交接批准后的范围，可能继续实施原始输入任务")
 	}
 }
 

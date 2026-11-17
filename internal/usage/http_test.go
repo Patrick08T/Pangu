@@ -26,7 +26,7 @@ func httpScope(t *testing.T) (context.Context, string) {
 		t.Fatal(err)
 	}
 	ns := uuid.NewString()
-	p, err := workspace.Register(ctx, ns, workspace.Project{Name: "HTTP预算", Source: t.TempDir(), Branch: "main", WorkerID: "test"})
+	p, err := workspace.Register(ctx, ns, workspace.Project{VCS: "git", Name: "HTTP预算", Source: t.TempDir(), Branch: "main", WorkerID: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}

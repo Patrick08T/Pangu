@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"errors"
+	"github.com/Patrick08T/Pangu/internal/approval"
 	"github.com/Patrick08T/Pangu/internal/submission"
 	"github.com/Patrick08T/Pangu/internal/workflow"
 	"github.com/Patrick08T/Pangu/internal/workspace"
@@ -12,7 +13,8 @@ import (
 )
 
 type RunDetails struct {
-	Fork *workflow.Fork `json:"fork,omitempty"`
+	Successor *submission.Record `json:"successor,omitempty"`
+	Fork      *workflow.Fork     `json:"fork,omitempty"`
 	RunSummary
 	Definition         *workflow.Definition `json:"definition,omitempty"`
 	SourceRunID        string               `json:"source_run_id,omitempty"`
@@ -49,16 +51,22 @@ func (b Backend) GetRun(ctx context.Context, id string) (*RunDetails, error) {
 	if record != nil {
 		out.ProjectID = record.ProjectID
 		out.CreatedBy = record.CreatedBy
+		out.Purpose = record.Snapshot.Purpose
 		out.Definition = &record.Snapshot.Workflow
 		out.SourceRunID = record.Snapshot.SourceRunID
 		out.CreatedAt = record.CreatedAt
 	}
-	out.Error = runError(run.ErrorMessage)
+	out.Error = stateError(out.Status, run.ErrorMessage)
 	for _, row := range children {
 		out.Nodes = append(out.Nodes, nodeRun(row))
 	}
 	enrichBranches(out, record)
-	sort.Slice(out.Nodes, func(i, j int) bool { return out.Nodes[i].NodeID < out.Nodes[j].NodeID })
+	sort.Slice(out.Nodes, func(i, j int) bool {
+		if out.Nodes[i].NodeID == out.Nodes[j].NodeID {
+			return out.Nodes[i].CreatedAt.After(out.Nodes[j].CreatedAt)
+		}
+		return out.Nodes[i].NodeID < out.Nodes[j].NodeID
+	})
 	for _, row := range raw.TaskEvents {
 		out.Events = append(out.Events, runEvent(row))
 	}
@@ -67,6 +75,15 @@ func (b Backend) GetRun(ctx context.Context, id string) (*RunDetails, error) {
 	}
 	if !out.LogsExpired && out.Definition != nil {
 		out.Title = taskTitle(*out.Definition)
+		outcome := workflow.BusinessOutcome(*out.Definition, Outputs(out), out.Status)
+		out.Outcome = &outcome
+		out.Successor, err = approval.Successor(ctx, b.Namespace(), out.ID)
+		if err != nil {
+			return nil, err
+		}
+		if out.Successor != nil {
+			out.Outcome.State = "continued"
+		}
 	}
 	return out, b.saveHistory(ctx, out)
 }
@@ -85,6 +102,9 @@ func enrichExecution(ctx context.Context, out *RunDetails) error {
 	if err := enrichErrors(ctx, out); err != nil {
 		return err
 	}
+	if err := enrichModelRetries(ctx, out); err != nil {
+		return err
+	}
 	stopped := terminal(out.Status)
 	for _, node := range out.Nodes {
 		stopped = stopped && terminal(node.Status)
@@ -97,6 +117,15 @@ func enrichExecution(ctx context.Context, out *RunDetails) error {
 	out.StopConfirmed = stopped
 	if (requested || out.Status == "cancelled") && !stopped {
 		out.Status = "cancelling"
+	}
+	if out.Status == "running" || out.Status == "queued" {
+		state, err := approval.RunState(ctx, out.ID)
+		if err != nil {
+			return err
+		}
+		if state != "" {
+			out.Status = state
+		}
 	}
 	return redactExpired(ctx, out)
 }
@@ -118,6 +147,7 @@ func redactExpired(ctx context.Context, out *RunDetails) error {
 			out.Error.Message = "日志已超过保留期"
 		}
 		for i := range out.Nodes {
+			out.Nodes[i].NextRetryAt = nil
 			out.Nodes[i].Output = ""
 			if out.Nodes[i].Error != nil {
 				out.Nodes[i].Error.Message = "日志已超过保留期"

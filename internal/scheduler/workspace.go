@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"github.com/Patrick08T/Pangu/internal/perforce"
 	"os"
 	"path/filepath"
 
@@ -10,6 +11,11 @@ import (
 )
 
 func (b Backend) RegisterProject(ctx context.Context, project workspace.Project) (*workspace.Project, error) {
+	if project.VCS == "perforce" {
+		if _, err := b.CheckProject(ctx, project); err != nil {
+			return nil, err
+		}
+	}
 	return workspace.Register(ctx, b.client.NewWorkflow(WorkflowName).GetName(), project)
 }
 
@@ -41,6 +47,12 @@ func projectStatus(ctx context.Context, project *workspace.Project, source strin
 	}
 	if source != "" {
 		if _, err := workspace.RerunSource(ctx, source, project.ID); err == nil {
+			return "ready"
+		}
+		return "unavailable"
+	}
+	if project.VCS == "perforce" {
+		if _, err := perforce.CaptureLocal(ctx, *project.Perforce, project.Source); err == nil {
 			return "ready"
 		}
 		return "unavailable"

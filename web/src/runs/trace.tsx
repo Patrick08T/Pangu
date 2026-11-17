@@ -22,9 +22,10 @@ export function DebugControls({run,allowed,access}:{run:Schema['RunDetails'];all
  </section>;
 }
 
-export function TracePanel({run,nodeID}:{run:Schema['RunDetails'];nodeID?:string}){
+export function TracePanel({run,nodeID,nodeRunID}:{run:Schema['RunDetails'];nodeID?:string;nodeRunID?:string}){
  const [node,setNode]=useState(''),[kind,setKind]=useState(''),[status,setStatus]=useState(''),[before,setBefore]=useState<number>();
  const filters=new URLSearchParams();if(nodeID||node)filters.set('node',nodeID||node);if(kind)filters.set('kind',kind);if(status)filters.set('status',status);
+ if(nodeRunID)filters.set('node_run_id',nodeRunID);
  const suffix=filters.toString(),params=new URLSearchParams(filters);if(before)params.set('before',String(before));
  const query=useQuery<Schema['TracePage']>(run.logs_expired?null:`/runs/${run.id}/trace?${params}`,before||run.stop_confirmed?0:2000);
  function filter(change:(value:string)=>void,value:string){change(value);setBefore(undefined);}

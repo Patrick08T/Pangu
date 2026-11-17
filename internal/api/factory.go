@@ -29,17 +29,12 @@ func (h handler) factorySessions(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	project := r.URL.Query().Get("project_id")
-	if _, err := uuid.Parse(project); err != nil {
-		problem(w, 400, "请选择项目")
+	project, offset, err := projectQuery(r.URL.Query(), true)
+	if err != nil {
+		problem(w, 400, err.Error())
 		return
 	}
 	if !h.allowed(w, r, project, "read", "") {
-		return
-	}
-	offset, err := catalogQuery(r.URL.Query(), false)
-	if err != nil {
-		problem(w, 400, err.Error())
 		return
 	}
 	items, err := factory.List(r.Context(), h.backend.Namespace(), project, offset)

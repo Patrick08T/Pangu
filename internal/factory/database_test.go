@@ -24,7 +24,7 @@ func setup(t *testing.T) (context.Context, string, *Session) {
 		t.Fatal(err)
 	}
 	ns := uuid.NewString()
-	p, err := workspace.Register(ctx, ns, workspace.Project{Name: "对话工厂", Source: t.TempDir(), Branch: "main", WorkerID: "test"})
+	p, err := workspace.Register(ctx, ns, workspace.Project{VCS: "git", Name: "对话工厂", Source: t.TempDir(), Branch: "main", WorkerID: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func setup(t *testing.T) (context.Context, string, *Session) {
 func prepareTest(t *testing.T, ctx context.Context, ns string, s *Session) Input {
 	t.Helper()
 	in := Input{ID: uuid.NewString(), Revision: s.Revision, Message: "生成写作助手", Mode: "build", ConnectionVersion: uuid.NewString()}
-	d, digest, err := Definition(*s, in, Context{})
+	d, digest, err := Definition(*s, in, Context{Connections: []catalog.ConnectionChoice{{ID: in.ConnectionVersion, Provider: "codex"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestConversationApplyIsAtomicIdempotentAndDoesNotSubmitBusinessRun(t *testi
 	if err != nil || again.Agents[0].ID != out.Agents[0].ID {
 		t.Fatal("重复创建", err)
 	}
-	items, err := catalog.List(ctx, ns, "", 0)
+	items, err := catalog.List(ctx, ns, "", 0, nil)
 	if err != nil || len(items) != 1 {
 		t.Fatal("对象数异常", err)
 	}

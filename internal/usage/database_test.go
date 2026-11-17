@@ -23,7 +23,7 @@ func TestConcurrentReservationsNeverExceedBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 	ns := uuid.NewString()
-	p, err := workspace.Register(ctx, ns, workspace.Project{Name: "预算", Source: t.TempDir(), Branch: "main", WorkerID: "test"})
+	p, err := workspace.Register(ctx, ns, workspace.Project{VCS: "git", Name: "预算", Source: t.TempDir(), Branch: "main", WorkerID: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}

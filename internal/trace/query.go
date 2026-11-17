@@ -2,6 +2,7 @@ package trace
 
 import (
 	"errors"
+	"github.com/google/uuid"
 	"net/url"
 	"strconv"
 )
@@ -10,6 +11,7 @@ type Query struct {
 	After, Before int64
 	Limit         int
 	NodeID        string
+	NodeRunID     string
 	Kind          string
 	Status        string
 }
@@ -35,6 +37,9 @@ func ParseQuery(values url.Values) (Query, error) {
 			if len(value) > 128 {
 				err = invalid
 			}
+		case "node_run_id":
+			query.NodeRunID = value
+			_, err = uuid.Parse(value)
 		case "kind":
 			query.Kind = value
 			if value != "node" && value != "model" && value != "tool" {

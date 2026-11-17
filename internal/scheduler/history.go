@@ -19,15 +19,19 @@ func (b Backend) saveHistory(ctx context.Context, run *RunDetails) error {
 	if run.ProjectID == "" || !run.StopConfirmed || run.FinishedAt == nil {
 		return nil
 	}
-	summary := RunDetails{RunSummary: run.RunSummary, SourceRunID: run.SourceRunID, StopConfirmed: true,
+	summary := RunDetails{RunSummary: run.RunSummary, SourceRunID: run.SourceRunID, Successor: run.Successor, StopConfirmed: true,
 		CancelRequested: run.CancelRequested, LogsExpired: true, Nodes: []NodeRun{}, Events: []RunEvent{}, Attempts: []execution.Attempt{}}
 	summary.Error = historyError(run.Error)
+	if run.Outcome != nil {
+		summary.Outcome = &workflow.Outcome{State: run.Outcome.State, Nodes: []workflow.OutcomeNode{}}
+	}
 	summary.Title = ""
 	for _, node := range run.Nodes {
 		summary.Nodes = append(summary.Nodes, NodeRun{RunSummary: node.RunSummary, NodeID: node.NodeID, TaskID: node.TaskID,
+			LoopID: node.LoopID, LoopRound: node.LoopRound, ModelRetry: node.ModelRetry,
 			Executor: node.Executor, Attempt: node.Attempt, Error: historyError(node.Error)})
 	}
-	body, err := json.Marshal(summary)
+	body, err := marshalRunHistory(summary)
 	if err != nil {
 		return err
 	}
@@ -49,11 +53,7 @@ func (b Backend) archivedRun(ctx context.Context, id string) (*RunDetails, error
 	if err != nil {
 		return nil, err
 	}
-	var run RunDetails
-	if err := json.Unmarshal(body, &run); err != nil {
-		return nil, err
-	}
-	return &run, nil
+	return unmarshalRunHistory(body)
 }
 
 func (b Backend) ArchiveRuns(ctx context.Context) error {
@@ -83,7 +83,7 @@ func (b Backend) runSummary(ctx context.Context, id string) (*RunSummary, error)
 		if lookupErr != nil {
 			return nil, lookupErr
 		}
-		run = &RunDetails{RunSummary: RunSummary{ID: record.RunID, ProjectID: record.ProjectID, CreatedBy: record.CreatedBy, CreatedAt: record.CreatedAt, Status: "unknown"}}
+		run = &RunDetails{RunSummary: RunSummary{ID: record.RunID, ProjectID: record.ProjectID, CreatedBy: record.CreatedBy, CreatedAt: record.CreatedAt, Status: "unknown", Purpose: record.Snapshot.Purpose}}
 		err = nil
 	}
 	if err != nil {

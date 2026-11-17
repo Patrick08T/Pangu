@@ -1,6 +1,8 @@
 package workflow
 
 type Fork struct {
+	ReportHashes   map[string]string     `json:"report_hashes,omitempty"`
+	ReportNodes    map[string]bool       `json:"report_nodes,omitempty"`
 	RequestHash    string                `json:"request_hash"`
 	OriginCommit   string                `json:"origin_commit"`
 	Checkpoints    map[string]string     `json:"checkpoints,omitempty"`

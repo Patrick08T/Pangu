@@ -22,7 +22,7 @@ func (b Backend) Preflight(ctx context.Context, definition workflow.Definition) 
 }
 
 func (b Backend) preflight(ctx context.Context, input preflightInput) (*workflow.Preflight, error) {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 28*time.Second)
 	defer cancel()
 	if _, err := b.registeredID(ctx); err != nil {
 		return nil, err

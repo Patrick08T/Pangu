@@ -73,6 +73,13 @@ func (b Backend) GetRequest(ctx context.Context, id string) (*submission.Record,
 }
 
 func (b Backend) sendSubmission(ctx context.Context, item *submission.Record) (string, error) {
+	return routeSubmission(ctx, b.Namespace(), item, b.DispatchEvolution, b.sendBusinessSubmission)
+}
+
+func (b Backend) sendBusinessSubmission(ctx context.Context, item *submission.Record) (string, error) {
+	if err := b.checkRebuildSubmission(ctx, item); err != nil {
+		return "", err
+	}
 	workflowID, err := b.registeredID(ctx)
 	if err != nil {
 		return "", err

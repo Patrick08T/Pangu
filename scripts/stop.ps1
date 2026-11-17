@@ -4,7 +4,7 @@ $pidFile="$projectRoot/.tools/pangu-process.json"
 if(!(Test-Path -LiteralPath $pidFile)){throw '没有本脚本登记的进程，请在原启动终端停止，不按名称批量结束进程'}
 $record=Get-Content -LiteralPath $pidFile -Raw -Encoding UTF8 | ConvertFrom-Json
 $process=Get-CimInstance Win32_Process -Filter "ProcessId = $([int]$record.pid)"
-$allowed=@([IO.Path]::GetFullPath("$projectRoot/pangu.exe"),[IO.Path]::GetFullPath("$projectRoot/.tools/pangu.exe"))
+$allowed=@([IO.Path]::GetFullPath("$projectRoot/pangu.exe"),[IO.Path]::GetFullPath("$projectRoot/.tools/pangu.exe"),[IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'Pangu/bin/pangu.exe')))
 if($process){
     if($record.binary -notin $allowed -or $process.ExecutablePath -ne $record.binary -or $process.CreationDate.ToUniversalTime().Ticks.ToString() -ne $record.started_ticks){throw '进程身份与启动记录不符，拒绝停止'}
     Stop-Process -Id $process.ProcessId -ErrorAction Stop

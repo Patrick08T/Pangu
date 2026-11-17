@@ -15,6 +15,7 @@ Push-Location -LiteralPath $projectRoot
 try {
     if ($Database) { . "$PSScriptRoot/database-env.ps1" -TestDatabase }
     Invoke-Check 'powershell.exe' @('-NoProfile', '-File', "$PSScriptRoot/codex-source.test.ps1")
+    Invoke-Check 'powershell.exe' @('-NoProfile', '-File', "$PSScriptRoot/start.test.ps1")
     Set-Location -LiteralPath "$projectRoot/web"
     Invoke-Check 'npm.cmd' @('test')
     Invoke-Check 'npm.cmd' @('run', 'build')

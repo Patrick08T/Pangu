@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 )
 
@@ -20,5 +21,21 @@ func TestCatalogQueryAndArchiveRejectInvalidInput(t *testing.T) {
 	testAPI(&fakeBackend{}).ServeHTTP(w, r)
 	if w.Code != 400 {
 		t.Fatalf("省略 archived 不应默认为恢复: %d", w.Code)
+	}
+}
+
+func TestCatalogArchiveFilterAcceptsOnlyExplicitBooleans(t *testing.T) {
+	for _, value := range []string{"true", "false"} {
+		if _, err := catalogQuery(url.Values{"archived": {value}}, false); err != nil {
+			t.Fatalf("归档筛选被拒绝：%s，%v", value, err)
+		}
+	}
+	for _, value := range []string{"", "1", "FALSE", "all"} {
+		if _, err := catalogQuery(url.Values{"archived": {value}}, false); err == nil {
+			t.Fatalf("接受错误归档筛选：%q", value)
+		}
+	}
+	if _, err := catalogQuery(url.Values{"archived": {"true"}}, true); err == nil {
+		t.Fatal("版本列表不应接受配置归档筛选")
 	}
 }

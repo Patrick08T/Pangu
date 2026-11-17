@@ -30,7 +30,7 @@ func trialObject(t *testing.T) (*catalog.Object, string) {
 	if err := database.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
-	p, err := workspace.Register(ctx, "api-test", workspace.Project{Name: "工作台测试", Source: t.TempDir(), Branch: "main", WorkerID: "test"})
+	p, err := workspace.Register(ctx, "api-test", workspace.Project{VCS: "git", Name: "工作台测试", Source: t.TempDir(), Branch: "main", WorkerID: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}

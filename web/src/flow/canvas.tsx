@@ -1,16 +1,17 @@
 import {useEffect,useRef,useState} from 'react';
 import {ReactFlow,Background,Controls,ControlButton,MiniMap,Handle,Position,MarkerType,applyNodeChanges,applyEdgeChanges,type Node,type Edge,type NodeProps,type ReactFlowInstance} from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import {arrange,connect,disconnect,display,label,removeNodes,type Flow,type Versions} from './model';
+import {agentIdentity,arrange,connect,disconnect,display,label,removeNodes,type Flow,type Versions} from './model';
 
-type CanvasNode=Node<{label:string;executor:string;version?:number;condition:boolean;approval:boolean;problem:boolean},'assistant'>;
+type CanvasNode=Node<{label:string;agent:string;executor:string;version?:number;condition:boolean;approval:boolean;problem:boolean;loop?:string;gate:boolean},'assistant'>;
 function AssistantNode({data,selected}:NodeProps<CanvasNode>){
   return <div className={`flow-card ${selected?'selected':''} ${data.problem?'invalid':''}`}>
     <Handle type="target" position={Position.Left} aria-label="前置步骤连接点"/>
     <div className="flow-card-title"><span className={`flow-kind ${data.executor}`}>{data.executor==='codex'?'C':'E'}</span><strong>{data.label}</strong></div>
+    <div className="flow-card-role" title={data.agent}>{data.agent}</div>
     <small>{data.executor==='codex'?'Codex':data.executor==='eino'?'Eino':'读取助手…'}{data.version?` · v${data.version}`:''}</small>
     {(data.condition||data.approval)&&<div className="flow-badges">{data.condition&&<span>条件执行</span>}{data.approval&&<span>人工审批</span>}</div>}
-    {data.problem&&<small className="error-text">需要完善配置</small>}
+    {data.loop&&<div className="flow-badges"><span>循环 {data.loop}</span>{data.gate&&<span>质量门</span>}</div>}{data.problem&&<small className="error-text">需要完善配置</small>}
     <Handle type="source" position={Position.Right} aria-label="后续步骤连接点"/>
   </div>;
 }
@@ -28,7 +29,7 @@ export function FlowCanvas({flow,versions,selected,select,change,disabled=false,
   useEffect(()=>{
     const automatic=arrange(flow).editor!.nodes!;
     setNodes(current=>flow.nodes.map(step=>({ ...current.find(n=>n.id===step.id),id:step.id,type:'assistant',position:flow.editor?.nodes?.[step.id]??automatic[step.id],selected:current.find(n=>n.id===step.id)?.selected??step.id===selected,
-      data:{label:label(flow,step.id),executor:versions[step.agent_version]?.spec.agent?.executor??'',version:versions[step.agent_version]?.number,condition:!!step.when,approval:!!(step.approval||versions[step.agent_version]?.spec.agent?.approval),problem:problems.includes(step.id)}})));
+      data:{label:label(flow,step.id),agent:agentIdentity(versions[step.agent_version]),executor:versions[step.agent_version]?.spec.agent?.executor??'',version:versions[step.agent_version]?.number,condition:!!step.when,approval:!!(step.approval||versions[step.agent_version]?.spec.agent?.approval),problem:problems.includes(step.id),loop:flow.loops?.find(l=>l.nodes.includes(step.id))?.id,gate:!!flow.loops?.some(l=>l.gates.includes(step.id))}})));
     setEdges(flow.nodes.flatMap(step=>(step.depends_on??[]).filter(id=>flow.nodes.some(n=>n.id===id)).map(id=>({id:`${id}:${step.id}`,source:id,target:step.id,type:'smoothstep',markerEnd:{type:MarkerType.ArrowClosed},ariaLabel:`${label(flow,id)} 到 ${label(flow,step.id)}`}))));
   },[flow,versions,problems.join(',')]);
   useEffect(()=>setNodes(current=>current.map(node=>({...node,selected:node.id===selected}))),[selected]);

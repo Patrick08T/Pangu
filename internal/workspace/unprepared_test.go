@@ -24,7 +24,7 @@ func TestRetentionIncludesFailureBeforeWorkspaceExists(t *testing.T) {
 		t.Fatal(err)
 	}
 	namespace, run := uuid.NewString(), uuid.NewString()
-	p, err := Register(ctx, namespace, Project{Name: "准备失败", Source: filepath.Join(t.TempDir(), "missing"), Branch: "main", WorkerID: WorkerID()})
+	p, err := Register(ctx, namespace, Project{VCS: "git", Name: "准备失败", Source: filepath.Join(t.TempDir(), "missing"), Branch: "main", WorkerID: WorkerID()})
 	if err != nil {
 		t.Fatal(err)
 	}

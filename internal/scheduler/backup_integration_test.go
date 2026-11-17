@@ -101,7 +101,7 @@ func backupProject(t *testing.T, b scheduler.Backend, root string) *workspace.Pr
 	}
 	t.Setenv("PANGU_WORKSPACE_ROOT", filepath.Join(root, "workspaces"))
 	t.Setenv("PANGU_WORKER_ID", "backup-worker")
-	p, err := b.RegisterProject(context.Background(), workspace.Project{Name: "恢复演练", Source: source, Branch: "main", WorkerID: "backup-worker"})
+	p, err := b.RegisterProject(context.Background(), workspace.Project{VCS: "git", Name: "恢复演练", Source: source, Branch: "main", WorkerID: "backup-worker"})
 	if err != nil {
 		t.Fatal(err)
 	}

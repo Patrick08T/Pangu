@@ -1,0 +1,1 @@
+ALTER TABLE pangu.perforce_deliveries DROP CONSTRAINT perforce_deliveries_client_key;

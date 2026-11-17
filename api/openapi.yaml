@@ -6,6 +6,403 @@ info:
 servers:
   - url: /api
 paths:
+  /projects/{id}/experience-policy:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+    get:
+      operationId: getExperiencePolicy
+      responses:
+        '200': {description: 默认关闭或当前项目策略, content: {application/json: {schema: {$ref: '#/components/schemas/ExperiencePolicy'}}}}
+        '403': {$ref: '#/components/responses/Error'}
+    put:
+      operationId: saveExperiencePolicy
+      parameters:
+        - {$ref: '#/components/parameters/ExperienceCSRF'}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ExperiencePolicyUpdate'}}}}
+      responses:
+        '200': {description: 原库 CAS 保存后的新修订, content: {application/json: {schema: {$ref: '#/components/schemas/ExperiencePolicy'}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+  /projects/{id}/experience-capabilities:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+    get:
+      operationId: getExperienceCapabilities
+      responses:
+        '200': {description: 实时权限及已接通能力；缺省项不得视为授权, content: {application/json: {schema: {$ref: '#/components/schemas/ExperienceCapabilities'}}}}
+        '403': {$ref: '#/components/responses/Error'}
+  /projects/{id}/experiences:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+      - {$ref: '#/components/parameters/ExperienceCursor'}
+      - {$ref: '#/components/parameters/ExperienceLimit'}
+    get:
+      operationId: listExperiences
+      responses:
+        '200': {description: 同事务重新检查来源授权后的元数据页, content: {application/json: {schema: {$ref: '#/components/schemas/ExperiencePage'}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '410': {$ref: '#/components/responses/Error'}
+  /projects/{id}/experiences/{version}:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+      - {$ref: '#/components/parameters/ExperienceVersionID'}
+    get:
+      operationId: getExperience
+      responses:
+        '200': {description: 读取原证据重新授权后的经验；非保护或保留集内容, content: {application/json: {schema: {$ref: '#/components/schemas/ExperienceVersion'}}}}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '410': {$ref: '#/components/responses/Error'}
+    delete:
+      operationId: deleteExperience
+      description: 不可逆撤销并清正文，保留审计墓碑；不得复活同一版本。
+      parameters:
+        - {$ref: '#/components/parameters/ExperienceCSRF'}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ExperienceReason'}}}}
+      responses:
+        '204': {description: 已撤销并清正文}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+  /projects/{id}/experiences/{version}/usages:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+      - {$ref: '#/components/parameters/ExperienceVersionID'}
+      - {$ref: '#/components/parameters/ExperienceCursor'}
+      - {$ref: '#/components/parameters/ExperienceLimit'}
+    get:
+      operationId: listExperienceUsages
+      responses:
+        '200': {description: 使用关系摘要；检索或引用不等于成功归因，不返回检索文本及原始注入, content: {application/json: {schema: {$ref: '#/components/schemas/ExperienceUsagePage'}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+  /projects/{id}/experiences/{version}/revoke:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+      - {$ref: '#/components/parameters/ExperienceVersionID'}
+    post:
+      operationId: revokeExperience
+      parameters:
+        - {$ref: '#/components/parameters/ExperienceCSRF'}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ExperienceReason'}}}}
+      responses:
+        '204': {description: 已幂等撤销；旧来源与传递成果不得继续复用}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+  /projects/{id}/experiences/{version}/activate:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+      - {$ref: '#/components/parameters/ExperienceVersionID'}
+    post:
+      operationId: verifyExperienceClaim
+      description: 执行预注册检查器并在激活事务里形成机器回执，禁止传入 Passed 或 receipt。验证正确不等于投放有收益。
+      parameters:
+        - {$ref: '#/components/parameters/ExperienceCSRF'}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ExperienceClaimRequest'}}}}
+      responses:
+        '200': {description: 经真实检查激活为 shadow, content: {application/json: {schema: {$ref: '#/components/schemas/ExperienceVersion'}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '410': {$ref: '#/components/responses/Error'}
+  /projects/{id}/experiences/{version}/delivery:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+      - {$ref: '#/components/parameters/ExperienceVersionID'}
+    post:
+      operationId: changeExperienceDelivery
+      parameters:
+        - {$ref: '#/components/parameters/ExperienceCSRF'}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ExperienceDeliveryRequest'}}}}
+      responses:
+        '200': {description: 服务端独立收益核验后的投放状态, content: {application/json: {schema: {$ref: '#/components/schemas/ExperienceVersion'}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+  /projects/{id}/experience-sources:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+    post:
+      operationId: grantExperienceSource
+      parameters:
+        - {$ref: '#/components/parameters/ExperienceCSRF'}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ExperienceSourceGrant'}}}}
+      responses:
+        '204': {description: 针对原始真实证据的有限保留授权；已曝光历史不可洗白为隐藏集}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+  /projects/{id}/experience-sources/{source}:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+      - {name: source, in: path, required: true, schema: {type: string, format: uuid}}
+    delete:
+      operationId: withdrawExperienceSource
+      parameters:
+        - {$ref: '#/components/parameters/ExperienceCSRF'}
+      responses:
+        '204': {description: 撤销来源保留授权，不抹除已曝光历史}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+  /projects/{id}/experience-checkers:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+    get:
+      operationId: listExperienceCheckers
+      parameters:
+        - {$ref: '#/components/parameters/ExperienceCursor'}
+        - {$ref: '#/components/parameters/ExperienceLimit'}
+      responses:
+        '200': {description: 检查器元数据，不返回 expected 或可作答案探测的内容哈希, content: {application/json: {schema: {$ref: '#/components/schemas/ExperienceCheckerPage'}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+    post:
+      operationId: registerExperienceChecker
+      parameters:
+        - {$ref: '#/components/parameters/ExperienceCSRF'}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ExperienceCheckerRegistration'}}}}
+      responses:
+        '201': {description: 预注册窄范围事实检查器，不可用于已有候选的事后验收, content: {application/json: {schema: {$ref: '#/components/schemas/ExperienceChecker'}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+  /projects/{id}/evolution/intents:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+      - {$ref: '#/components/parameters/ExperienceCursor'}
+      - {$ref: '#/components/parameters/ExperienceLimit'}
+    get:
+      operationId: listEvolutionIntents
+      responses:
+        '200': {description: 管理员只读历史；策略停用或未接执行器不隐藏历史, content: {application/json: {schema: {$ref: '#/components/schemas/EvolutionIntentPage'}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+    post:
+      operationId: startEvolutionCandidate
+      description: 仅提交 Instruction 候选；角色、项目、当前配置和机器证据均由服务端重建。202 不是评测通过。
+      parameters:
+        - {$ref: '#/components/parameters/ExperienceCSRF'}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/EvolutionCandidateRequest'}}}}
+      responses:
+        '202': {description: 持久接收独立实验, content: {application/json: {schema: {$ref: '#/components/schemas/EvolutionIntentSummary'}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '422': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+  /projects/{id}/evolution/intents/{intent}:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+      - {$ref: '#/components/parameters/EvolutionIntentID'}
+    get:
+      operationId: getEvolutionIntent
+      responses:
+        '200': {description: 安全的代际与发布状态；不暴露隐藏套件、机器结果或逐例反馈, content: {application/json: {schema: {$ref: '#/components/schemas/EvolutionIntentSummary'}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+  /projects/{id}/evolution/intents/{intent}/decision:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+      - {$ref: '#/components/parameters/EvolutionIntentID'}
+    post:
+      operationId: decideEvolutionIntent
+      parameters:
+        - {$ref: '#/components/parameters/ExperienceCSRF'}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/EvolutionGeneration'}}}}
+      responses:
+        '200': {description: 重读真实机器证据后的最小判定摘要，无逐例反馈或区间, content: {application/json: {schema: {$ref: '#/components/schemas/EvolutionDecision'}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+  /projects/{id}/evolution/intents/{intent}/promote:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+      - {$ref: '#/components/parameters/EvolutionIntentID'}
+    post:
+      operationId: promoteEvolutionIntent
+      parameters:
+        - {$ref: '#/components/parameters/ExperienceCSRF'}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/EvolutionGeneration'}}}}
+      responses:
+        '202': {description: 持久发布状态，不代表入口已完成远端切换, content: {application/json: {schema: {$ref: '#/components/schemas/EvolutionIntentSummary'}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+  /projects/{id}/evolution/intents/{intent}/observe:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+      - {$ref: '#/components/parameters/EvolutionIntentID'}
+    post:
+      operationId: observeEvolutionIntent
+      parameters:
+        - {$ref: '#/components/parameters/ExperienceCSRF'}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/EvolutionObservationRequest'}}}}
+      responses:
+        '202': {description: 从实际业务运行重读的观察状态，不接收分数或通过标志, content: {application/json: {schema: {$ref: '#/components/schemas/EvolutionIntentSummary'}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+  /runs/{id}/experience:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+      - {name: usage_cursor, in: query, schema: {type: string}}
+      - {name: artifact_cursor, in: query, schema: {type: string}}
+      - {$ref: '#/components/parameters/ExperienceLimit'}
+    get:
+      operationId: runExperienceLineage
+      responses:
+        '200': {description: 由真实运行与请求绑定推导的经验水位及分页依赖摘要；旧任务缺水位标记 unproven, content: {application/json: {schema: {$ref: '#/components/schemas/RunExperienceLineage'}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '502': {$ref: '#/components/responses/Error'}
+  /projects/{id}/experiences/{version}/observe:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+      - {$ref: '#/components/parameters/ExperienceVersionID'}
+    post:
+      operationId: observeExperienceMemory
+      parameters:
+        - {$ref: '#/components/parameters/ExperienceCSRF'}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ExperienceObservationRequest'}}}}
+      responses:
+        '201': {description: 原始业务反馈和真实投放使用记录派生的观察；不接受调用方结果, content: {application/json: {schema: {$ref: '#/components/schemas/ExperienceObservation'}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+  /projects/{id}/experience-artifacts/{artifact}:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+      - {name: artifact, in: path, required: true, schema: {type: string, maxLength: 256}}
+    get:
+      operationId: experienceArtifactSummary
+      responses:
+        '200': {description: 显式展开同项目父依赖；不返回成果正文；来源受限返回 redacted 摘要, content: {application/json: {schema: {$ref: '#/components/schemas/ExperienceArtifactSummary'}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '502': {$ref: '#/components/responses/Error'}
+  /runs/{id}/rebuild-intents:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+    get:
+      operationId: listApprovalRebuildIntents
+      responses:
+        '200': {description: 失效代际和独立后继请求，不恢复旧审批, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/ApprovalRebuildIntent'}}}}}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+  /runs/{id}/rebuild-intents/{intent}:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+      - {$ref: '#/components/parameters/EvolutionIntentID'}
+    post:
+      operationId: rebuildInvalidatedRun
+      parameters:
+        - {$ref: '#/components/parameters/ExperienceCSRF'}
+      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false}}}}
+      responses:
+        '202': {description: 原创建人获准的幂等后继请求, content: {application/json: {schema: {$ref: '#/components/schemas/Submission'}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+  /projects/{id}/evolution/intents/{intent}/rollback:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+      - {$ref: '#/components/parameters/EvolutionIntentID'}
+    post:
+      operationId: rollbackEvolutionIntent
+      parameters:
+        - {$ref: '#/components/parameters/ExperienceCSRF'}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/EvolutionRollback'}}}}
+      responses:
+        '202': {description: 已接收回退意图；不代表远端已完成，不撤销既有外部副作用, content: {application/json: {schema: {$ref: '#/components/schemas/EvolutionIntentSummary'}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+  /projects/{id}/evolution/environments:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+    get:
+      operationId: listEvolutionEnvironments
+      parameters:
+        - {$ref: '#/components/parameters/ExperienceCursor'}
+        - {$ref: '#/components/parameters/ExperienceLimit'}
+      responses:
+        '200': {description: 项目内最新环境修订，含停用环境, content: {application/json: {schema: {$ref: '#/components/schemas/EvolutionEnvironmentPage'}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+    post:
+      operationId: registerEvolutionEnvironment
+      parameters:
+        - {$ref: '#/components/parameters/ExperienceCSRF'}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/EvolutionEnvironmentUpdate'}}}}
+      responses:
+        '201': {description: CAS 注册真实无工具受控环境；哈希与源基线由服务端计算, content: {application/json: {schema: {$ref: '#/components/schemas/EvolutionEnvironment'}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '422': {$ref: '#/components/responses/Error'}
+  /projects/{id}/entries/{entry}/runs:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+      - {name: entry, in: path, required: true, description: 工作台入口裸ID，服务端固定workbench种类, schema: {type: string, minLength: 1, maxLength: 256}}
+    post:
+      operationId: submitWorkbenchEntry
+      parameters:
+        - {$ref: '#/components/parameters/ExperienceCSRF'}
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string}}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/WorkbenchEntrySubmission'}}}}
+      responses:
+        '202': {description: 真实入口绑定已核验并产生持久业务请求；pending不代表执行完成, content: {application/json: {schema: {$ref: '#/components/schemas/Submission'}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+  /projects/{id}/runnables:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+      - {name: offset, in: query, schema: {type: integer, minimum: 0}}
+    get:
+      operationId: projectRunnableChoices
+      responses:
+        '200': {description: 共享手工发布及本项目稳定自动版本；不返回 observing 或墓碑, content: {application/json: {schema: {$ref: '#/components/schemas/RunnableChoicePage'}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+  /projects/{id}/versions/{version}:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+      - {$ref: '#/components/parameters/ExperienceVersionID'}
+    get:
+      operationId: projectCatalogVersion
+      responses:
+        '200': {description: 重新检查项目范围和版本可用性, content: {application/json: {schema: {$ref: '#/components/schemas/CatalogVersion'}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+  /projects/{id}/catalog/{object}/versions:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+      - {name: object, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: offset, in: query, schema: {type: integer, minimum: 0}}
+    get:
+      operationId: projectCatalogVersions
+      responses:
+        '200': {description: 项目可用版本，每页100条，按版本号倒序, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/CatalogVersion'}}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
   /factory/sessions:
     get:
       operationId: listFactorySessions
@@ -117,7 +514,7 @@ paths:
             schema: {$ref: '#/components/schemas/ForkInput'}
       responses:
         '202':
-          description: 基于成功串行 Codex 前缀的独立返工运行
+          description: 基于成功文件检查点的独立返工运行，保留相同的串行成功前缀及研究报告
           content:
             application/json:
               schema: {$ref: '#/components/schemas/Submission'}
@@ -269,6 +666,27 @@ paths:
         '409': {$ref: '#/components/responses/Error'}
         '413': {$ref: '#/components/responses/Error'}
         '503': {$ref: '#/components/responses/Error'}
+  /runs/{id}/evidence:
+    parameters:
+      - {$ref: '#/components/parameters/ID'}
+    get:
+      operationId: runEvidence
+      parameters:
+        - {name: path, in: query, schema: {type: string}, description: 索引中的精确文件路径，省略则返回索引。}
+      responses:
+        '200':
+          description: 当前原始来源生成的证据索引或指定正文，保持来源运行与覆盖限制。
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EvidenceManifest'}
+            text/plain:
+              schema: {type: string}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '410': {$ref: '#/components/responses/Error'}
+        '502': {$ref: '#/components/responses/Error'}
   /runs/{id}/usage:
     parameters:
       - {$ref: '#/components/parameters/ID'}
@@ -467,7 +885,7 @@ paths:
       operationId: listApprovals
       responses:
         '200':
-          description: 运行中的节点审批，最多 32 项；正文随运行清理
+          description: 运行中的所有审批轮次；正文随运行清理
           content:
             application/json:
               schema:
@@ -477,9 +895,42 @@ paths:
         '403': {$ref: '#/components/responses/Error'}
         '404': {$ref: '#/components/responses/Error'}
         '502': {$ref: '#/components/responses/Error'}
+  /approvals:
+    get:
+      operationId: browseApprovals
+      parameters:
+        - {name: project_id, in: query, required: true, schema: {type: string, format: uuid}}
+        - {name: run_id, in: query, schema: {type: string, format: uuid}}
+        - {name: node_id, in: query, schema: {type: string}}
+        - {name: status, in: query, schema: {type: string, enum: [waiting, changes_requested, approved, rejected, revoked, consumed, expired]}}
+        - {name: offset, in: query, schema: {type: integer, minimum: 0}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100}}
+      responses:
+        '200':
+          description: 项目内最新审核轮次；指定运行后可查询历史轮次
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ApprovalPage'}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '502': {$ref: '#/components/responses/Error'}
   /approvals/{id}:
     parameters:
       - $ref: '#/components/parameters/ID'
+    get:
+      operationId: getApproval
+      responses:
+        '200':
+          description: 冻结审核项和当前运行状态
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ApprovalDetails'}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '502': {$ref: '#/components/responses/Error'}
     put:
       operationId: decideApproval
       description: 飞书会话中的运行所有者或管理者批准/驳回；开始执行前可以撤回批准。API Token 不可代替人工审批。
@@ -492,10 +943,36 @@ paths:
             schema: {$ref: '#/components/schemas/ApprovalDecision'}
       responses:
         '200':
-          description: 决策已持久化，事件交接会重试；执行前重新检查权限、有效期与 Git 检查点
+          description: 决策已持久化；纠偏后修订并复审，批准后重新检查权限、完整报告与 Git 检查点
           content:
             application/json:
               schema: {$ref: '#/components/schemas/ApprovalGate'}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '410': {$ref: '#/components/responses/Error'}
+        '502': {$ref: '#/components/responses/Error'}
+  /approvals/{id}/repair:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    post:
+      operationId: prepareEvidenceRepair
+      description: 从修正草稿冻结执行图差异和成功前缀，不发布、不执行；需要运行及配置管理权限。
+      parameters:
+        - {name: X-CSRF-Token, in: header, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EvidenceRepairInput'}
+      responses:
+        '200':
+          description: 待用户确认的修正续跑方案
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EvidenceRepair'}
         '400': {$ref: '#/components/responses/Error'}
         '401': {$ref: '#/components/responses/Error'}
         '403': {$ref: '#/components/responses/Error'}
@@ -864,6 +1341,105 @@ paths:
           $ref: '#/components/responses/Error'
         '502':
           $ref: '#/components/responses/Error'
+  /projects/{id}/workspace:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    patch:
+      operationId: bindPerforceDirectory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [source]
+              properties:
+                source: {type: string, minLength: 1, description: Worker 上已有 P4 Client 的 Root 或 AltRoot 绝对路径}
+      responses:
+        '200':
+          description: 已核对本地目录并绑定，后续运行直接在此执行
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Project'}
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+  /projects/check:
+    post:
+      operationId: checkProject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectRegistration'
+      responses:
+        '200':
+          description: 绑定 Worker 只读检查 Perforce 登录、映射和已提交范围
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Preflight'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+  /runs/{id}/perforce:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: perforceDelivery
+      responses:
+        '200':
+          description: Perforce 基线和待审核交付；非 Perforce 运行返回 null
+          content:
+            application/json:
+              schema:
+                type: object
+                nullable: true
+                allOf:
+                  - $ref: '#/components/schemas/PerforceDelivery'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: deliverPerforce
+      responses:
+        '202':
+          description: 后台在绑定 Worker 生成或重试同一待审核 changelist，并 shelve；通过 GET 查询进度，不提交
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerforceDelivery'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
   /projects:
     get:
       operationId: listProjects
@@ -1003,6 +1579,8 @@ paths:
             type: string
             enum:
               - queued
+              - waiting_approval
+              - revising_plan
               - running
               - succeeded
               - failed
@@ -1642,6 +2220,11 @@ paths:
           in: query
           schema:
             type: integer
+        - name: archived
+          in: query
+          description: 按归档状态筛选；省略时返回全部，筛选在分页前生效。按最近更新时间倒序排列。
+          schema:
+            type: boolean
       responses:
         '200':
           description: 按权限过滤；空页仍可能存在 next_offset。
@@ -2539,7 +3122,7 @@ paths:
             type: string
       responses:
         '303':
-          description: 一次性状态和 PKCE 校验后设置会话，跳转站点首页
+          description: 校验一次性浏览器状态并通过飞书服务端授权确认身份后，签发绑定个人身份的 Pangu 登录 token；HttpOnly Cookie 与服务端会话固定 30 天过期，访问不续期，跳转站点首页
         '401':
           $ref: '#/components/responses/Error'
         '403':
@@ -2778,6 +3361,7 @@ paths:
         - {name: before, in: query, schema: {type: integer, format: int64, minimum: 0}}
         - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
         - {name: node, in: query, schema: {type: string, maxLength: 128}}
+        - {name: node_run_id, in: query, schema: {type: string, format: uuid}, description: 仅查询此节点执行的日志，隔离不同循环轮次}
         - {name: kind, in: query, schema: {type: string, enum: [node, model, tool]}}
         - {name: status, in: query, schema: {type: string, enum: [running, succeeded, failed, cancelled]}}
       responses:
@@ -2802,6 +3386,7 @@ paths:
         - {name: before, in: query, schema: {type: integer, format: int64, minimum: 0}}
         - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
         - {name: node, in: query, schema: {type: string, maxLength: 128}}
+        - {name: node_run_id, in: query, schema: {type: string, format: uuid}, description: 仅查询此节点执行的日志，隔离不同循环轮次}
         - {name: kind, in: query, schema: {type: string, enum: [node, model, tool]}}
         - {name: status, in: query, schema: {type: string, enum: [running, succeeded, failed, cancelled]}}
       responses:
@@ -2856,6 +3441,29 @@ paths:
         '502': {$ref: '#/components/responses/Error'}
 components:
   parameters:
+    ExperienceCSRF:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema: {type: string}
+    ExperienceVersionID:
+      name: version
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    EvolutionIntentID:
+      name: intent
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    ExperienceCursor:
+      name: cursor
+      in: query
+      schema: {type: string}
+    ExperienceLimit:
+      name: limit
+      in: query
+      schema: {type: integer, minimum: 1, maximum: 100, default: 50}
     IdempotencyKey:
       name: Idempotency-Key
       in: header
@@ -2900,6 +3508,513 @@ components:
           schema:
             $ref: '#/components/schemas/Readiness'
   schemas:
+    ExperienceBudget:
+      type: object
+      additionalProperties: false
+      properties:
+        calls: {type: integer, format: int64, minimum: 0}
+        tokens: {type: integer, format: int64, minimum: 0}
+    ExperienceEvaluationPolicy:
+      type: object
+      additionalProperties: false
+      properties:
+        suite_version: {type: string}
+        protection_set: {type: string}
+        holdout_set: {type: string}
+        grouping: {type: string}
+        repeats: {type: integer, minimum: 0}
+        minimum_samples: {type: integer, minimum: 0}
+        primary_metric: {type: string, enum: ['', acceptance, rework, cost, duration], description: 启用时只接受 capabilities.supported_metrics 中的真实可测指标}
+        minimum_improvement: {type: number}
+        non_inferiority: {type: number, nullable: true}
+        uncertainty_method: {type: string}
+        confidence: {type: number}
+        max_candidates: {type: integer, minimum: 0}
+        multiple_comparison: {type: string}
+        resource_tolerance: {type: number, nullable: true}
+    ExperienceDeliveryPolicy:
+      type: object
+      additionalProperties: false
+      properties:
+        mode: {type: string, enum: ['', shadow, canary, serving, paused]}
+        task_scope: {type: array, nullable: true, items: {type: string}}
+        traffic_basis_points: {type: integer, minimum: 0, maximum: 10000}
+    ExperienceObservationPolicy:
+      type: object
+      additionalProperties: false
+      properties:
+        window_seconds: {type: integer, format: int64, minimum: 0}
+        minimum_samples: {type: integer, minimum: 0}
+        deadline_seconds: {type: integer, format: int64, minimum: 0}
+        degradation_threshold: {type: number}
+        retention_seconds: {type: integer, format: int64, minimum: 0}
+        source_retention_authorized: {type: boolean}
+    ExperiencePolicySettings:
+      type: object
+      additionalProperties: false
+      description: 默认关闭。enabled 控制新学习，read_enabled 独立控制已有记忆读取；停学不代表撤销。启用时所有范围、独立预算和评测门槛由服务端校验。
+      properties:
+        enabled: {type: boolean, default: false}
+        read_enabled: {type: boolean, default: false}
+        auto_publish: {type: boolean, default: false}
+        revoked: {type: boolean, default: false}
+        roles: {type: array, nullable: true, items: {type: string}}
+        workflows: {type: array, nullable: true, items: {type: string}}
+        entrypoints: {type: array, nullable: true, items: {type: string}}
+        extractor_version: {type: string}
+        generator_version: {type: string}
+        environments: {type: array, nullable: true, items: {type: string}}
+        learning_budget: {$ref: '#/components/schemas/ExperienceBudget'}
+        evaluation_budget: {$ref: '#/components/schemas/ExperienceBudget'}
+        budget_period_seconds: {type: integer, format: int64, minimum: 0}
+        candidate_interval_seconds: {type: integer, format: int64, minimum: 0}
+        evaluation: {$ref: '#/components/schemas/ExperienceEvaluationPolicy'}
+        delivery: {$ref: '#/components/schemas/ExperienceDeliveryPolicy'}
+        observation: {$ref: '#/components/schemas/ExperienceObservationPolicy'}
+    ExperiencePolicy:
+      type: object
+      required: [revision, enabled, read_enabled, auto_publish, revoked, roles, workflows, entrypoints, extractor_version, generator_version, environments, learning_budget, evaluation_budget, budget_period_seconds, candidate_interval_seconds, evaluation, delivery, observation]
+      properties:
+        revision: {type: integer, format: int64, minimum: 0}
+        enabled: {type: boolean}
+        read_enabled: {type: boolean}
+        auto_publish: {type: boolean}
+        revoked: {type: boolean}
+        roles: {type: array, nullable: true, items: {type: string}}
+        workflows: {type: array, nullable: true, items: {type: string}}
+        entrypoints: {type: array, nullable: true, items: {type: string}}
+        extractor_version: {type: string}
+        generator_version: {type: string}
+        environments: {type: array, nullable: true, items: {type: string}}
+        learning_budget: {$ref: '#/components/schemas/ExperienceBudget'}
+        evaluation_budget: {$ref: '#/components/schemas/ExperienceBudget'}
+        budget_period_seconds: {type: integer, format: int64}
+        candidate_interval_seconds: {type: integer, format: int64}
+        evaluation: {$ref: '#/components/schemas/ExperienceEvaluationPolicy'}
+        delivery: {$ref: '#/components/schemas/ExperienceDeliveryPolicy'}
+        observation: {$ref: '#/components/schemas/ExperienceObservationPolicy'}
+    ExperiencePolicyUpdate:
+      type: object
+      additionalProperties: false
+      required: [expected_revision, policy]
+      properties:
+        expected_revision: {type: integer, format: int64, minimum: 0}
+        policy: {$ref: '#/components/schemas/ExperiencePolicySettings'}
+    ExperienceCapabilities:
+      type: object
+      required: [permissions, features, supported_metrics]
+      properties:
+        permissions:
+          type: object
+          properties:
+            manage_policy: {type: boolean}
+            manage_sources: {type: boolean}
+            revoke: {type: boolean}
+            delete: {type: boolean}
+            rollback: {type: boolean}
+            submit_entry: {type: boolean}
+        features:
+          type: object
+          properties:
+            memory_read: {type: boolean}
+            claim_verification: {type: boolean}
+            delivery_promotion: {type: boolean}
+            evolution: {type: boolean}
+            run_lineage: {type: boolean}
+            approval_rebuild: {type: boolean}
+            entry_submission: {type: boolean}
+        supported_metrics: {type: array, items: {type: string}}
+    ExperienceSummary:
+      type: object
+      required: [id, entry_id, revision, validity, delivery, delivery_revision, expires_at, created_at]
+      properties:
+        id: {type: string, format: uuid}
+        entry_id: {type: string}
+        revision: {type: integer, format: int64}
+        validity: {type: string, enum: [candidate, active, superseded, revoked, expired]}
+        delivery: {type: string, enum: [shadow, canary, serving, paused]}
+        delivery_revision: {type: integer, format: int64}
+        expires_at: {type: string, format: date-time}
+        created_at: {type: string, format: date-time}
+    ExperiencePage:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/ExperienceSummary'}}
+        next_cursor: {type: string}
+    ExperienceContent:
+      type: object
+      required: [kind, observation, practice, conditions, counterexamples, applicability]
+      properties:
+        kind: {type: string}
+        observation: {type: string}
+        practice: {type: string}
+        conditions: {type: string}
+        counterexamples: {type: string}
+        applicability:
+          type: object
+          required: [roles]
+          properties:
+            roles: {type: array, items: {type: string}}
+            role_versions: {type: array, items: {type: string}}
+            modules: {type: array, items: {type: string}}
+            keywords: {type: array, items: {type: string}}
+            error_signatures: {type: array, items: {type: string}}
+    ExperienceSource:
+      type: object
+      required: [id, kind, run_id, node_id, project_id, hash]
+      properties:
+        id: {type: string, format: uuid}
+        kind: {type: string, enum: [report, feedback]}
+        run_id: {type: string, format: uuid}
+        node_id: {type: string}
+        project_id: {type: string, format: uuid}
+        hash: {type: string}
+    ExperienceVersion:
+      type: object
+      required: [id, entry_id, revision, project_id, body_hash, content, sources, validity, delivery, delivery_revision, canary, expires_at, tombstoned, invalid_reason]
+      properties:
+        id: {type: string, format: uuid}
+        entry_id: {type: string}
+        revision: {type: integer, format: int64}
+        project_id: {type: string, format: uuid}
+        body_hash: {type: string}
+        content: {$ref: '#/components/schemas/ExperienceContent'}
+        sources: {type: array, items: {$ref: '#/components/schemas/ExperienceSource'}}
+        validity: {type: string, enum: [candidate, active, superseded, revoked, expired]}
+        delivery: {type: string, enum: [shadow, canary, serving, paused]}
+        delivery_revision: {type: integer, format: int64}
+        canary: {$ref: '#/components/schemas/ExperienceDeliveryPolicy'}
+        expires_at: {type: string, format: date-time}
+        tombstoned: {type: boolean}
+        invalid_reason: {type: string}
+    ExperienceUsage:
+      type: object
+      required: [run_id, node_id, iteration, approval_generation, approval_revision, created_at]
+      properties:
+        run_id: {type: string, description: 冻结使用身份，可能是提交 request ID；不能当成已验证的 Hatchet run ID 跳转}
+        node_id: {type: string}
+        iteration: {type: integer}
+        approval_generation: {type: integer, format: int64}
+        approval_revision: {type: integer, format: int64}
+        created_at: {type: string, format: date-time}
+    ExperienceUsagePage:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/ExperienceUsage'}}
+        next_cursor: {type: string, description: 不透明的 64 位十六进制游标，不是验收证据}
+    ExperienceReason:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason: {type: string, minLength: 1, maxLength: 1024}
+    ExperienceClaimRequest:
+      type: object
+      additionalProperties: false
+      required: [checker_id, intent_id, generation]
+      properties:
+        checker_id: {type: string, format: uuid}
+        intent_id: {type: string, format: uuid}
+        generation: {type: integer, format: int64, minimum: 1}
+    ExperienceDeliveryRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_revision, policy, evidence_id]
+      properties:
+        expected_revision: {type: integer, format: int64, minimum: 1}
+        policy: {$ref: '#/components/schemas/ExperienceDeliveryPolicy'}
+        evidence_id: {type: string, format: uuid, description: 仅定位服务端独立证据，不能提交评分或 Passed}
+    ExperienceSourceGrant:
+      type: object
+      additionalProperties: false
+      required: [id, kind, run_id, node_id, hash, expires_at]
+      properties:
+        id: {type: string, format: uuid}
+        kind: {type: string, enum: [report, feedback]}
+        run_id: {type: string, format: uuid}
+        node_id: {type: string}
+        hash: {type: string, pattern: '^[0-9a-f]{64}$'}
+        expires_at: {type: string, format: date-time}
+    ExperienceCheckerSpec:
+      type: object
+      additionalProperties: false
+      required: [kind, content_hash, source_kind, node_id, json_pointer, expected]
+      properties:
+        kind: {type: string, enum: [json_assertion_v1]}
+        content_hash: {type: string, pattern: '^[0-9a-f]{64}$'}
+        source_kind: {type: string, enum: [report, feedback]}
+        node_id: {type: string}
+        json_pointer: {type: string, maxLength: 256}
+        expected: {oneOf: [{type: boolean}, {type: number}, {type: string, maxLength: 256}]}
+    ExperienceCheckerRegistration:
+      type: object
+      additionalProperties: false
+      required: [spec, expires_at]
+      properties:
+        spec: {$ref: '#/components/schemas/ExperienceCheckerSpec'}
+        expires_at: {type: string, format: date-time}
+    ExperienceChecker:
+      type: object
+      required: [id, kind, source_kind, node_id, created_at, expires_at]
+      properties:
+        id: {type: string, format: uuid}
+        kind: {type: string}
+        source_kind: {type: string}
+        node_id: {type: string}
+        created_at: {type: string, format: date-time}
+        expires_at: {type: string, format: date-time}
+    ExperienceCheckerPage:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/ExperienceChecker'}}
+        next_cursor: {type: string}
+    EvolutionIntentSummary:
+      type: object
+      required: [id, project_id, policy_revision, generation, state, started_at]
+      properties:
+        kind: {type: string, enum: [role_change, memory_benefit]}
+        experiment_id: {type: string, format: uuid, description: 真实冻结实验标识；不是机器回执或通过证明}
+        benefit_memory_version_id: {type: string, format: uuid}
+        id: {type: string, format: uuid}
+        project_id: {type: string, format: uuid}
+        policy_revision: {type: integer, format: int64}
+        generation: {type: integer, minimum: 1}
+        state: {type: string, enum: [preparing, evaluating, passed, publishing, switching, observing, stabilizing, rolling_back, reconciling, stable, rolled_back, rejected, invalidated, insufficient]}
+        publication:
+          type: object
+          required: [agent_id]
+          properties:
+            agent_id: {type: string, format: uuid, description: 已发布角色版本 ID}
+            flow_id: {type: string, format: uuid, description: 已发布流程版本 ID}
+        started_at: {type: string, format: date-time}
+    EvolutionIntentPage:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/EvolutionIntentSummary'}}
+        next_cursor: {type: string}
+    ExperienceReference:
+      type: object
+      required: [version_id, body_hash, delivery_revision]
+      properties:
+        version_id: {type: string, format: uuid}
+        body_hash: {type: string}
+        delivery_revision: {type: integer}
+    ExperienceArtifactReference:
+      type: object
+      required: [id, hash]
+      properties:
+        id: {type: string}
+        hash: {type: string}
+    ExperienceAuditState:
+      type: object
+      required: [status, proven, redacted]
+      properties:
+        status: {type: string, enum: [valid, invalid, unproven, restricted]}
+        proven: {type: boolean}
+        invalid_reason: {type: string}
+        redacted: {type: boolean}
+    ExperienceWatermarkSummary:
+      allOf:
+        - {$ref: '#/components/schemas/ExperienceAuditState'}
+        - type: object
+          required: [present, generation, policy_revision, references]
+          properties:
+            present: {type: boolean}
+            generation: {type: integer}
+            policy_revision: {type: integer}
+            hash: {type: string}
+            references: {type: array, nullable: true, items: {$ref: '#/components/schemas/ExperienceReference'}}
+    ExperienceRunUsageSummary:
+      allOf:
+        - {$ref: '#/components/schemas/ExperienceAuditState'}
+        - type: object
+          required: [node_id, iteration, approval_generation, approval_revision, match_reason, references, created_at]
+          properties:
+            node_id: {type: string}
+            iteration: {type: integer}
+            approval_generation: {type: integer}
+            approval_revision: {type: integer}
+            match_reason: {type: string}
+            injection_hash: {type: string}
+            references: {type: array, nullable: true, items: {$ref: '#/components/schemas/ExperienceReference'}}
+            created_at: {type: string, format: date-time}
+    ExperienceArtifactSummary:
+      allOf:
+        - {$ref: '#/components/schemas/ExperienceAuditState'}
+        - type: object
+          required: [id, node_id, kind, generation, references, parents]
+          properties:
+            id: {type: string}
+            node_id: {type: string}
+            kind: {type: string}
+            output_hash: {type: string}
+            input_hash: {type: string}
+            execution_input_hash: {type: string}
+            generation: {type: integer}
+            references: {type: array, nullable: true, items: {$ref: '#/components/schemas/ExperienceReference'}}
+            parents: {type: array, nullable: true, items: {$ref: '#/components/schemas/ExperienceArtifactReference'}}
+    ExperienceRunUsagePage:
+      type: object
+      required: [items, total, has_more]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/ExperienceRunUsageSummary'}}
+        total: {type: integer}
+        has_more: {type: boolean}
+        next_cursor: {type: string}
+    ExperienceArtifactPage:
+      type: object
+      required: [items, total, has_more]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/ExperienceArtifactSummary'}}
+        total: {type: integer}
+        has_more: {type: boolean}
+        next_cursor: {type: string}
+    RunExperienceLineage:
+      type: object
+      required: [actual_run_id, watermark, usages, artifacts, chain_complete]
+      properties:
+        actual_run_id: {type: string, format: uuid}
+        watermark: {$ref: '#/components/schemas/ExperienceWatermarkSummary'}
+        usages: {$ref: '#/components/schemas/ExperienceRunUsagePage'}
+        artifacts: {$ref: '#/components/schemas/ExperienceArtifactPage'}
+        chain_complete: {type: boolean, description: 分页根成果不等于完整依赖闭包}
+    EvolutionCandidateRequest:
+      type: object
+      additionalProperties: false
+      required: [id, policy_revision, baseline_version, environment_id, suite_id, budget]
+      oneOf:
+        - required: [instruction]
+          properties:
+            kind: {type: string, enum: [role_change]}
+            instruction: {type: string, minLength: 1}
+          not: {required: [benefit_memory_version_id]}
+        - required: [kind, benefit_memory_version_id]
+          properties:
+            kind: {type: string, enum: [memory_benefit]}
+            instruction: {type: string, maxLength: 0}
+            memory_version_ids: {type: array, maxItems: 0, items: {type: string, format: uuid}}
+      properties:
+        kind: {type: string, enum: [role_change, memory_benefit], default: role_change}
+        benefit_memory_version_id: {type: string, format: uuid}
+        id: {type: string, format: uuid}
+        policy_revision: {type: integer, minimum: 1}
+        baseline_version: {type: string, format: uuid}
+        environment_id: {type: string, format: uuid}
+        suite_id: {type: string, format: uuid}
+        instruction: {type: string, maxLength: 65536, description: 仅role_change可写，memory_benefit保持基线指令不变}
+        flow_version: {type: string, format: uuid}
+        binding_ids: {type: array, items: {type: string}}
+        memory_version_ids: {type: array, items: {type: string, format: uuid}}
+        entries:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [kind, id]
+            properties:
+              kind: {type: string, enum: [workbench, cron, webhook]}
+              id: {type: string}
+        budget: {$ref: '#/components/schemas/ExperienceBudget'}
+    WorkbenchEntrySubmission:
+      type: object
+      additionalProperties: false
+      required: [input]
+      properties:
+        input: {type: string, minLength: 1}
+    ExperienceObservationRequest:
+      type: object
+      additionalProperties: false
+      required: [run_id]
+      properties:
+        run_id: {type: string, format: uuid}
+    ExperienceObservation:
+      type: object
+      additionalProperties: false
+      required: [id, version_id, run_id, delivery_revision, finished_at]
+      properties:
+        id: {type: string, format: uuid}
+        version_id: {type: string, format: uuid}
+        run_id: {type: string, format: uuid}
+        delivery_revision: {type: integer, format: int64}
+        finished_at: {type: string, format: date-time}
+    EvolutionGeneration:
+      type: object
+      additionalProperties: false
+      required: [generation]
+      properties:
+        generation: {type: integer, minimum: 1}
+    EvolutionObservationRequest:
+      type: object
+      additionalProperties: false
+      required: [generation, run_id]
+      properties:
+        generation: {type: integer, minimum: 1}
+        run_id: {type: string, format: uuid}
+    EvolutionDecision:
+      type: object
+      additionalProperties: false
+      required: [outcome, category]
+      properties:
+        outcome: {type: string}
+        category: {type: string}
+        decision_hash: {type: string}
+    ApprovalRebuildIntent:
+      type: object
+      additionalProperties: false
+      required: [id, run_id, node_id, from_generation, to_generation, reason, requires_stop, created_at, can_rebuild]
+      properties:
+        id: {type: string, format: uuid}
+        run_id: {type: string, format: uuid}
+        node_id: {type: string}
+        from_generation: {type: integer, minimum: 1}
+        to_generation: {type: integer, minimum: 2}
+        reason: {type: string}
+        requires_stop: {type: boolean}
+        created_at: {type: string, format: date-time}
+        ready_at: {type: string, format: date-time}
+        successor_request_id: {type: string, format: uuid}
+        can_rebuild: {type: boolean, description: 当前身份与运行状态允许尝试重建；提交时仍重验基线和代际}
+        blocked_reason: {type: string}
+    EvolutionRollback:
+      type: object
+      additionalProperties: false
+      required: [generation, reason]
+      properties:
+        generation: {type: integer, minimum: 1}
+        reason: {type: string, minLength: 1, maxLength: 1024}
+    EvolutionEnvironment:
+      type: object
+      required: [id, project_id, revision, backend, connection_version, enabled, currency, source_baseline, config_hash]
+      properties:
+        id: {type: string, format: uuid}
+        project_id: {type: string, format: uuid}
+        revision: {type: integer, format: int64}
+        backend: {type: string, enum: [eino_json_v1]}
+        connection_version: {type: string, format: uuid}
+        enabled: {type: boolean}
+        currency: {type: string}
+        source_baseline: {type: string}
+        config_hash: {type: string}
+    EvolutionEnvironmentUpdate:
+      type: object
+      additionalProperties: false
+      required: [id, expected_revision, backend, connection_version, enabled]
+      properties:
+        id: {type: string, format: uuid}
+        expected_revision: {type: integer, format: int64, minimum: 0}
+        backend: {type: string, enum: [eino_json_v1]}
+        connection_version: {type: string, format: uuid}
+        enabled: {type: boolean}
+    EvolutionEnvironmentPage:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/EvolutionEnvironment'}}
+        next_cursor: {type: string}
     DebugState:
       type: object
       required: [paused, step_requested, step_node, revision, active]
@@ -2949,6 +4064,9 @@ components:
         mode: {type: string, enum: [build, modify, diagnose, optimize]}
         connection_version: {type: string, format: uuid}
         target_id: {type: string, format: uuid}
+        model: {type: string, maxLength: 128, description: 工厂对话的具体 Codex 模型，省略时继承连接或 Worker 默认；不修改候选 Agent 设置}
+        reasoning_effort: {$ref: '#/components/schemas/ReasoningEffort'}
+        fast: {type: boolean, description: 省略继承运行环境默认，false 明确关闭，true 开启}
         target_revision: {type: integer, minimum: 1}
         source_run_id: {type: string, format: uuid}
     FactoryAgent:
@@ -2981,6 +4099,7 @@ components:
         name: {type: string}
         agents: {type: array, minItems: 1, maxItems: 12, items: {$ref: '#/components/schemas/FactoryAgent'}}
         steps: {type: array, maxItems: 32, items: {$ref: '#/components/schemas/FactoryStep'}}
+        loops: {type: array, maxItems: 16, items: {$ref: '#/components/schemas/Loop'}}
         object_id: {type: string, format: uuid}
         revision: {type: integer, minimum: 1}
         parameters: {$ref: '#/components/schemas/Shape'}
@@ -3068,6 +4187,8 @@ components:
         commit: {type: string}
         origin_commit: {type: string}
         checkpoints: {type: object, additionalProperties: {type: string}}
+        report_nodes: {type: object, additionalProperties: {type: boolean}}
+        report_hashes: {type: object, additionalProperties: {type: string}, description: 复用研究正文在本次接续快照中的 SHA256，不改变来源历史输出格式}
         reused:
           type: object
           additionalProperties:
@@ -3076,7 +4197,10 @@ components:
             properties:
               text: {type: string}
               run_id: {type: string}
-              data: {type: object, additionalProperties: true}
+              report_ids: {type: array, items: {type: string, format: uuid}}
+              report_sha256: {type: string}
+              iteration: {$ref: '#/components/schemas/Iteration'}
+              content_revision: {type: string}
     GithubHookConfig:
       type: object
       additionalProperties: false
@@ -3163,6 +4287,7 @@ components:
       type: object
       required: [budget, used, calls]
       properties:
+        budget_sources: {type: array, items: {type: string, format: uuid}, description: 新版本接续共同计入预算的来源运行；calls 仅列当前运行明细}
         budget:
           type: object
           nullable: true
@@ -3400,21 +4525,115 @@ components:
     ApprovalPolicy:
       type: object
       additionalProperties: false
-      required: [timeout_seconds]
+      description: '执行前持久等待人工审批，不自动过期。'
+      required: [source_node, revision_nodes]
       properties:
-        timeout_seconds: {type: integer, minimum: 1, maximum: 3600, description: '节点之前独立的人工审批等待期限。'}
+        execution_plan: {type: boolean, description: 校验结构化任务映射，审批执行图差异；批准后发布新版本并保留成果续跑}
+        source_node: {type: string, minLength: 1}
+        revision_nodes: {type: array, minItems: 1, maxItems: 32, uniqueItems: true, items: {type: string}}
+    ReviewItem:
+      type: object
+      additionalProperties: false
+      required: [id, category, title, proposal, rationale, evidence_refs, task_ids]
+      properties:
+        id: {type: string}
+        category: {type: string, minLength: 1, maxLength: 100}
+        title: {type: string, minLength: 1, maxLength: 200}
+        proposal: {type: string, minLength: 1, maxLength: 8000}
+        rationale: {type: string, minLength: 1, maxLength: 4000}
+        evidence_refs: {type: array, items: {type: string}}
+        task_ids: {type: array, items: {type: string}}
+        selection_mode: {type: string, enum: [single, multiple], description: 有真实备选方案时提供，互斥方案单选，可组合方案多选。}
+        options: {type: array, minItems: 2, maxItems: 6, items: {$ref: '#/components/schemas/ReviewOption'}}
+        recommended_option_ids: {type: array, minItems: 1, maxItems: 6, uniqueItems: true, items: {type: string}, description: 推荐组合；只作提示，不代表用户选择。}
+        planned_option_ids: {type: array, maxItems: 6, uniqueItems: true, items: {type: string}, description: 当前计划采用的组合；未确定时可为空。与用户选择不同则须修订复审。}
+        recommendation_reason: {type: string, minLength: 1, maxLength: 4000}
+    ReviewOption:
+      type: object
+      additionalProperties: false
+      required: [id, label, description]
+      properties:
+        id: {type: string}
+        label: {type: string, minLength: 1, maxLength: 200}
+        description: {type: string, minLength: 1, maxLength: 4000, description: 方案的收益、成本、风险及适用条件。}
+    ReviewResolution:
+      type: object
+      additionalProperties: false
+      required: [item_id, status, explanation]
+      properties:
+        item_id: {type: string}
+        status: {type: string, enum: [addressed, unresolved]}
+        explanation: {type: string, minLength: 1, maxLength: 4000}
+    Review:
+      type: object
+      additionalProperties: false
+      required: [title, summary, items, resolutions]
+      properties:
+        title: {type: string, minLength: 1, maxLength: 200}
+        summary: {type: string, minLength: 1, maxLength: 4000}
+        items: {type: array, minItems: 1, maxItems: 200, items: {$ref: '#/components/schemas/ReviewItem'}}
+        resolutions: {type: array, items: {$ref: '#/components/schemas/ReviewResolution'}}
+    ReviewAnswer:
+      type: object
+      additionalProperties: false
+      required: [item_id, decision, correction]
+      properties:
+        item_id: {type: string}
+        decision: {type: string, enum: [accept, revise, reject]}
+        correction: {type: string, maxLength: 4000}
+        selected_option_ids: {type: array, maxItems: 6, uniqueItems: true, items: {type: string}, description: 用户明确选择的方案组合；变更当前计划可直接作为纠偏，无需重复输入文本。}
+    ApprovalSummary:
+      type: object
+      required: [id, run_id, node_id, title, status, round, created_at, approval_generation]
+      properties:
+        approval_generation: {type: integer, minimum: 1}
+        invalidation_reason: {type: string}
+        invalidated_at: {type: string, format: date-time}
+        id: {type: string, format: uuid}
+        run_id: {type: string, format: uuid}
+        node_id: {type: string}
+        title: {type: string}
+        status: {type: string}
+        round: {type: integer, minimum: 1}
+        created_at: {type: string, format: date-time}
+    ApprovalPage:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/ApprovalSummary'}}
+        next_offset: {type: integer}
+    ApprovalDetails:
+      type: object
+      required: [approval, run_status, stopped]
+      properties:
+        approval: {$ref: '#/components/schemas/ApprovalGate'}
+        run_status: {type: string}
+        stopped: {type: boolean}
     ApprovalDecision:
       type: object
       additionalProperties: false
-      required: [subject_hash, decision, reason]
+      required: [subject_hash, decision, reason, items]
       properties:
+        repair_hash: {type: string, pattern: '^[0-9a-f]{64}$', description: 明确批准此修正方案；与原补证复验互斥，items 和 reason 必须为空}
         subject_hash: {type: string, pattern: '^[0-9a-f]{64}$'}
-        decision: {type: string, enum: [approved, rejected, revoked]}
-        reason: {type: string, minLength: 1, maxLength: 2048}
+        decision: {type: string, enum: [approved, changes_requested, rejected, revoked]}
+        reason: {type: string, maxLength: 4000}
+        items: {type: array, maxItems: 200, items: {$ref: '#/components/schemas/ReviewAnswer'}}
     ApprovalGate:
       type: object
-      required: [id, project_id, run_id, node_id, owner_id, subject_hash, subject, head_commit, status, actor_id, reason, created_at, expires_at, decided_at, consumed_at]
+      required: [id, project_id, run_id, node_id, owner_id, subject_hash, subject, head_commit, status, actor_id, reason, created_at, decided_at, consumed_at, round, items, approval_generation]
       properties:
+        approval_generation: {type: integer, minimum: 1}
+        invalidation_reason: {type: string}
+        invalidated_at: {type: string, format: date-time}
+        repair: {$ref: '#/components/schemas/EvidenceRepair'}
+        purpose: {type: string, enum: [evidence]}
+        execution: {$ref: '#/components/schemas/ExecutionPlanPreview'}
+        inherited_from: {type: string, format: uuid}
+        round: {type: integer, minimum: 1}
+        previous_id: {type: string, format: uuid}
+        review: {$ref: '#/components/schemas/Review'}
+        items: {type: array, items: {$ref: '#/components/schemas/ReviewAnswer'}}
         id: {type: string, format: uuid}
         project_id: {type: string, format: uuid}
         run_id: {type: string, format: uuid}
@@ -3423,13 +4642,34 @@ components:
         subject_hash: {type: string}
         subject: {type: object, nullable: true, additionalProperties: true}
         head_commit: {type: string}
-        status: {type: string, enum: [waiting, approved, rejected, revoked, consumed, expired]}
+        status: {type: string, enum: [waiting, approved, rejected, revoked, consumed, expired, changes_requested, invalidated]}
         actor_id: {type: string}
         reason: {type: string}
         created_at: {type: string, format: date-time}
-        expires_at: {type: string, format: date-time}
         decided_at: {type: string, format: date-time, nullable: true}
         consumed_at: {type: string, format: date-time, nullable: true}
+    EvidenceRepairInput:
+      type: object
+      additionalProperties: false
+      required: [subject_hash, object_id, revision, checkpoint_node, summary]
+      properties:
+        subject_hash: {type: string, pattern: '^[0-9a-f]{64}$'}
+        object_id: {type: string, format: uuid}
+        revision: {type: integer, minimum: 1}
+        checkpoint_node: {type: string}
+        summary: {type: string, minLength: 1, maxLength: 4000}
+    EvidenceRepair:
+      type: object
+      required: [id, hash, status, summary, checkpoint_node, reused_nodes, execute_nodes, execution]
+      properties:
+        id: {type: string, format: uuid}
+        hash: {type: string}
+        status: {type: string, enum: [prepared, approved, consumed]}
+        summary: {type: string}
+        checkpoint_node: {type: string}
+        reused_nodes: {type: array, items: {type: string}}
+        execute_nodes: {type: array, items: {type: string}}
+        execution: {$ref: '#/components/schemas/ExecutionPlanPreview'}
     FeedbackInput:
       type: "object"
       required:
@@ -3716,6 +4956,12 @@ components:
             properties:
               id: {type: string, minLength: 1, maxLength: 128}
               name: {type: string, minLength: 1, maxLength: 256}
+              reasoning_levels:
+                type: array
+                uniqueItems: true
+                items: {$ref: '#/components/schemas/ReasoningEffort'}
+              default_reasoning: {$ref: '#/components/schemas/ReasoningEffort'}
+              fast: {type: boolean}
     ConnectionChoicePage:
       type: object
       required: [items]
@@ -3725,12 +4971,13 @@ components:
           type: array
           items:
             type: object
-            required: [id, name, number, model]
+            required: [id, name, number, model, provider]
             properties:
               id: {type: string, format: uuid}
               name: {type: string}
               number: {type: integer}
               model: {type: string}
+              provider: {type: string, enum: [codex, openai]}
     AgentTrialInput:
       type: object
       additionalProperties: false
@@ -3860,19 +5107,36 @@ components:
     ProjectRegistration:
       type: object
       additionalProperties: false
+      oneOf:
+        - properties:
+            vcs:
+              enum: [git]
+          required: [source, branch]
+          not:
+            required: [perforce]
+        - properties:
+            vcs:
+              enum: [perforce]
+          required: [perforce, source]
+          not:
+            required: [branch]
       required:
         - name
-        - source
-        - branch
+        - vcs
         - worker_id
       properties:
+        vcs:
+          type: string
+          enum: [git, perforce]
+        perforce:
+          $ref: '#/components/schemas/PerforceConfig'
         name:
           type: string
           minLength: 1
           maxLength: 128
         source:
           type: string
-          description: 绑定 Worker 上的本地 Git 项目绝对路径
+          description: Worker 上的本地目录。Git 为仓库路径；Perforce 为已存在 Client 的 Root/AltRoot，任务直接在该根目录的项目子目录执行。
         branch:
           type: string
           description: 本地分支，不自动 fetch
@@ -3890,10 +5154,14 @@ components:
       required:
         - id
         - name
-        - source
-        - branch
+        - vcs
         - worker_id
       properties:
+        vcs:
+          type: string
+          enum: [git, perforce]
+        perforce:
+          $ref: '#/components/schemas/PerforceConfig'
         id:
           type: string
           format: uuid
@@ -3912,6 +5180,48 @@ components:
             type: string
             maxLength: 1024
           description: 管理员登记的验证命令参数数组，首项为Worker上的绝对程序路径；每个Codex节点成功后、检查点发布前执行，最长30秒。禁止凭据参数。不配置时为空数组。
+    PerforceConfig:
+      type: object
+      additionalProperties: false
+      required: [port, user, client, scope]
+      properties:
+        port:
+          type: string
+          description: host:port 或 ssl:host:port，不接受远程命令协议
+        user:
+          type: string
+        client:
+          type: string
+          description: 已存在的本地 Client；运行直接修改绑定工作区，已有 changelist 归属保持不变
+        scope:
+          type: string
+          description: 相对于 Client 映射根的项目子目录；. 表示根目录
+    PerforceDelivery:
+      type: object
+      required: [baseline, client, checkpoint, status]
+      properties:
+        local_directory:
+          type: string
+          description: 绑定的本地 P4 工作区根目录
+        existing_changelists:
+          type: array
+          items: {type: string}
+          description: 本轮修改涉及但保持原归属的 changelist（包括 default），不会自动移入或 shelve 到本轮清单
+        baseline:
+          type: integer
+          format: int64
+        client:
+          type: string
+        checkpoint:
+          type: string
+        changelist:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum: [available, preparing, shelved, failed, empty]
+        error:
+          type: string
     Preflight:
       type: object
       required:
@@ -4078,6 +5388,41 @@ components:
                 type: boolean
         category:
           type: string
+    EvidenceManifest:
+      type: object
+      required: [run_id, project_id, collected_at, files, missing_sources, limitations]
+      properties:
+        run_id: {type: string, format: uuid}
+        project_id: {type: string, format: uuid}
+        collected_at: {type: string, format: date-time}
+        missing_sources: {type: array, items: {type: string}}
+        limitations: {type: array, items: {type: string}}
+        files:
+          type: array
+          items:
+            type: object
+            required: [path, run_id, kind, title, sha256, bytes]
+            properties:
+              path: {type: string}
+              run_id: {type: string, format: uuid}
+              kind: {type: string}
+              title: {type: string}
+              sha256: {type: string}
+              bytes: {type: integer}
+    BusinessOutcome:
+      type: object
+      required: [state, nodes]
+      properties:
+        state: {type: string, enum: [not_assessed, pending, accepted, needs_attention, continued]}
+        nodes:
+          type: array
+          items:
+            type: object
+            required: [node_id, state]
+            properties:
+              node_id: {type: string}
+              state: {type: string, enum: [not_assessed, accepted, needs_attention]}
+              summary: {type: string}
     RunSummary:
       type: object
       required:
@@ -4085,6 +5430,7 @@ components:
         - status
         - created_at
       properties:
+        outcome: {$ref: '#/components/schemas/BusinessOutcome'}
         title:
           type: string
           description: 从任务输入提取的简短标题；过期后不再返回。
@@ -4095,6 +5441,8 @@ components:
           type: string
           enum:
             - queued
+            - waiting_approval
+            - revising_plan
             - running
             - cancelling
             - succeeded
@@ -4141,7 +5489,18 @@ components:
             - executor
             - attempt
           properties:
+            loop_id: {type: string}
+            loop_round: {type: integer, minimum: 1, description: 业务修复轮次，与模型重试和执行尝试分别记录}
             reused_from: {type: string, format: uuid}
+            review_round: {type: integer, minimum: 1}
+            model_retry:
+              type: integer
+              minimum: 0
+              description: 当前节点执行所在的模型重试序号，首次执行为 0；普通节点尝试另计。
+            next_retry_at:
+              type: string
+              format: date-time
+              description: 最近一次临时模型故障的最早重试时间。仅活动运行中等待重试的节点返回，取消或终止后清除。
             node_id:
               type: string
             task_id:
@@ -4197,6 +5556,7 @@ components:
             - stop_confirmed
             - logs_expired
           properties:
+            successor: {$ref: '#/components/schemas/Submission'}
             fork: {$ref: '#/components/schemas/Fork'}
             nodes:
               type: array
@@ -4318,6 +5678,7 @@ components:
       required:
         - nodes
       properties:
+        loops: {type: array, maxItems: 16, items: {$ref: '#/components/schemas/Loop'}}
         budget: {$ref: '#/components/schemas/Budget'}
         project_id:
           type: string
@@ -4336,6 +5697,34 @@ components:
           format: uuid
         input_schema:
           $ref: '#/components/schemas/Shape'
+    Loop:
+      type: object
+      additionalProperties: false
+      required: [id, nodes, gates]
+      description: 平台控制的循环块，块内无环、不重叠、不嵌套；质量门全部通过后才离开，不设轮数上限。
+      properties:
+        id: {type: string, pattern: '^[a-zA-Z][a-zA-Z0-9_-]{0,63}$'}
+        nodes: {type: array, minItems: 2, maxItems: 32, uniqueItems: true, items: {type: string}}
+        gates: {type: array, minItems: 1, maxItems: 32, uniqueItems: true, items: {type: string}, description: 依次执行的只读质量门，输出必填 passed 布尔值与 summary 文本}
+    Iteration:
+      type: object
+      required: [id, round]
+      properties:
+        id: {type: string}
+        round: {type: integer, minimum: 1}
+        gate: {type: boolean}
+        feedback:
+          type: object
+          required: [round, node_id, node_run_id, summary]
+          properties:
+            round: {type: integer, minimum: 1}
+            node_id: {type: string}
+            node_run_id: {type: string}
+            summary: {type: string}
+            report_ids: {type: array, items: {type: string}}
+    ReasoningEffort:
+      type: string
+      enum: [none, minimal, low, medium, high, xhigh, max, ultra]
     Node:
       type: object
       additionalProperties: false
@@ -4368,6 +5757,10 @@ components:
           pattern: ^$|\S
           maxLength: 128
           description: 无模型连接的 Eino 必填；有连接时须与连接模型一致，Codex 账号连接可留空使用默认模型。
+        reasoning_effort: {$ref: '#/components/schemas/ReasoningEffort'}
+        fast:
+          type: boolean
+          description: Codex Fast 模式；省略沿用运行环境，false 显式使用普通档位。自定义运行选项必须选择具体模型。
         depends_on:
           type: array
           uniqueItems: true
@@ -4380,6 +5773,8 @@ components:
           type: string
           format: uuid
         output_schema:
+          $ref: '#/components/schemas/Shape'
+        report_schema:
           $ref: '#/components/schemas/Shape'
         bindings:
           type: object
@@ -4507,6 +5902,7 @@ components:
         task: {type: string, description: 本步骤任务，追加到角色指令；最多 8192 字节，合并后指令最多 16384 字节}
         read_only: {type: boolean, description: 仅可收紧为只读，不能解除助手已有的只读权限}
         output_schema: {$ref: '#/components/schemas/Shape'}
+        report_schema: {$ref: '#/components/schemas/Shape'}
         when: {$ref: '#/components/schemas/Condition'}
         approval: {$ref: '#/components/schemas/ApprovalPolicy'}
         id:
@@ -4525,6 +5921,32 @@ components:
       required:
         - id
         - agent_version
+    ExecutionPlanPreview:
+      type: object
+      required: [base_version, object_id, revision, flow, workflow, changes, assignments]
+      properties:
+        base_version: {type: string, format: uuid}
+        object_id: {type: string, format: uuid}
+        revision: {type: integer}
+        flow: {$ref: '#/components/schemas/Flow'}
+        workflow: {$ref: '#/components/schemas/Workflow'}
+        changes:
+          type: array
+          items:
+            type: object
+            required: [node_id]
+            properties:
+              node_id: {type: string}
+              before: {$ref: '#/components/schemas/FlowBinding'}
+              after: {$ref: '#/components/schemas/FlowBinding'}
+        assignments:
+          type: array
+          items:
+            type: object
+            required: [task_id, node_id]
+            properties:
+              task_id: {type: string}
+              node_id: {type: string}
     FlowEditor:
       type: object
       additionalProperties: false
@@ -4552,6 +5974,7 @@ components:
       type: object
       additionalProperties: false
       properties:
+        loops: {type: array, maxItems: 16, items: {$ref: '#/components/schemas/Loop'}}
         editor: {$ref: '#/components/schemas/FlowEditor'}
         budget: {$ref: '#/components/schemas/Budget'}
         parameters:
@@ -4615,6 +6038,10 @@ components:
         created_at:
           type: string
           format: date-time
+        updated_at:
+          type: string
+          format: date-time
+          description: 最近保存、首次发布该修订或归档状态变更的时间。
       required:
         - id
         - kind
@@ -4623,6 +6050,7 @@ components:
         - revision
         - archived
         - created_at
+        - updated_at
     CatalogVersion:
       type: object
       additionalProperties: false

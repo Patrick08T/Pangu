@@ -1,12 +1,32 @@
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {FlowStudio} from './editor';
 import type {Access,Schema} from '../console/components';
+import {timestamp} from '../console/components';
 
 vi.mock('./canvas',()=>({FlowCanvas:()=> <div aria-label="流程画布"/>}));
 const project='11111111-1111-4111-8111-111111111111';
 const version:Schema['CatalogVersion']={id:'22222222-2222-4222-8222-222222222222',object_id:'a',kind:'agent',number:1,source_revision:1,spec:{agent:{id:'agent',executor:'codex',instruction:'检查'}},created_at:'2026-10-26T00:00:00Z',archived:false};
 const access:Access={project,role:'manager',session:{id:'user',name:'成员',admin:false,csrf:'csrf'}};
 afterEach(()=>{cleanup();vi.unstubAllGlobals();});
+
+test('保存和发布后展示服务端返回的最近更新时间',async()=>{
+  const savedAt='2026-10-30T10:00:00Z',publishedAt='2026-10-30T11:00:00Z';
+  const item:Schema['CatalogObject']={id:'flow',kind:'workflow',name:'原名',spec:{flow:{nodes:[{id:'one',agent_version:version.id}]}},revision:1,archived:false,created_at:version.created_at,updated_at:version.created_at};
+  vi.stubGlobal('fetch',vi.fn(async(url:string,options)=>{
+    if(options?.method==='PUT')return Response.json({...item,name:'新名',revision:2,updated_at:savedAt});
+    if(url.endsWith('/publish'))return Response.json({...version,kind:'workflow',created_at:publishedAt});
+    if(url==='/api/catalog/flow')return Response.json({...item,name:'新名',revision:2,updated_at:publishedAt});
+    if(url.includes('/versions/'))return Response.json(version);
+    return Response.json(url.includes('/runnables')?{items:[]}:[]);
+  }));
+  render(<FlowStudio access={access} item={item}/>);
+  expect(screen.getByText(`最近更新时间：${timestamp(item.updated_at)}`)).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('工作流名称'),{target:{value:'新名'}});
+  fireEvent.click(screen.getByRole('button',{name:'保存草稿'}));
+  expect(await screen.findByText(`最近更新时间：${timestamp(savedAt)}`)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:'发布'}));
+  expect(await screen.findByText(`最近更新时间：${timestamp(publishedAt)}`)).toBeTruthy();
+});
 
 test('无项目的共享工作流使用角色模板并保留步骤任务，不显示运行入口',async()=>{
   const calls:{url:string;body:any}[]=[];
@@ -16,7 +36,7 @@ test('无项目的共享工作流使用角色模板并保留步骤任务，不�
     if(path.includes('/runnables'))return Response.json({items:[{name:'通用性能角色',version:shared}]});
     if(path.includes('/catalog?'))return Response.json({items:[]});
     if(path.includes('/versions/'))return Response.json(shared);
-    if(path.endsWith('/catalog'))return Response.json({id:'shared-flow',kind:'template',name:body.name,spec:body.spec,revision:1,archived:false,created_at:version.created_at});
+    if(path.endsWith('/catalog'))return Response.json({id:'shared-flow',kind:'template',name:body.name,spec:body.spec,revision:1,archived:false,created_at:version.created_at,updated_at:version.created_at});
     if(path.endsWith('/publish'))return Response.json({...shared,id:'flow-published',spec:{flow:{nodes:[]}}});
     return Response.json([]);
   }));
@@ -42,7 +62,7 @@ test('普通表单添加助手并保存画布，发布和运行不需要配置 J
     if(path.includes('/runnables'))return Response.json({items:[{name:'检查助手',version}]});
     if(path.includes('/catalog?'))return Response.json({items:[]});
     if(path.includes('/versions/'))return Response.json(version);
-    if(path.endsWith('/catalog'))return Response.json({id:'flow',kind:'workflow',name:body.name,spec:{flow:{editor:body.spec.flow.editor,nodes:body.spec.flow.nodes,parameters:body.spec.flow.parameters}},revision:1,archived:false,created_at:version.created_at});
+    if(path.endsWith('/catalog'))return Response.json({id:'flow',kind:'workflow',name:body.name,spec:{flow:{editor:body.spec.flow.editor,nodes:body.spec.flow.nodes,parameters:body.spec.flow.parameters}},revision:1,archived:false,created_at:version.created_at,updated_at:version.created_at});
     if(path.endsWith('/publish'))return Response.json({...version,id:'published',kind:'workflow'});
     return Response.json([]);
   }));
@@ -62,7 +82,7 @@ test('普通表单添加助手并保存画布，发布和运行不需要配置 J
 });
 test('只读用户不能添加、修改、保存或发布',async()=>{
   vi.stubGlobal('fetch',vi.fn(async(url)=>Response.json(String(url).includes('/versions/')?version:[])));
-  const item:Schema['CatalogObject']={id:'flow',kind:'workflow',name:'只读',spec:{flow:{nodes:[{id:'one',agent_version:version.id}]}},revision:1,archived:false,created_at:version.created_at};
+  const item:Schema['CatalogObject']={id:'flow',kind:'workflow',name:'只读',spec:{flow:{nodes:[{id:'one',agent_version:version.id}]}},revision:1,archived:false,created_at:version.created_at,updated_at:version.created_at};
   render(<FlowStudio access={{...access,role:'viewer'}} item={item}/>);
   expect((screen.getByLabelText('工作流名称') as HTMLInputElement).disabled).toBe(true);
   expect((screen.getByRole('button',{name:'保存草稿'}) as HTMLButtonElement).disabled).toBe(true);
@@ -71,14 +91,14 @@ test('只读用户不能添加、修改、保存或发布',async()=>{
 test('保存请求未完成时仍保护草稿，取消离开不丢输入',async()=>{
   const confirm=vi.fn(()=>false);vi.stubGlobal('confirm',confirm);
   vi.stubGlobal('fetch',vi.fn(async(url,options)=>{if(options?.method==='PUT')return new Promise<Response>(()=>{});return Response.json(String(url).includes('/runnables')?{items:[]}:[]);}));
-  const item:Schema['CatalogObject']={id:'flow',kind:'workflow',name:'原名',spec:{flow:{nodes:[]}},revision:1,archived:false,created_at:version.created_at};
+  const item:Schema['CatalogObject']={id:'flow',kind:'workflow',name:'原名',spec:{flow:{nodes:[]}},revision:1,archived:false,created_at:version.created_at,updated_at:version.created_at};
   render(<FlowStudio access={access} item={item}/>);fireEvent.change(screen.getByLabelText('工作流名称'),{target:{value:'未保存'}});
   fireEvent.click(screen.getByRole('button',{name:'保存草稿'}));await screen.findByText('正在处理…');
   expect(window.dispatchEvent(new Event('pangu:before-navigate',{cancelable:true}))).toBe(false);
   expect(confirm).toHaveBeenCalledOnce();expect((screen.getByLabelText('工作流名称') as HTMLInputElement).value).toBe('未保存');
 });
 test('归档工作流可恢复，编辑入口随之开放',async()=>{
-  const item:Schema['CatalogObject']={id:'flow',kind:'workflow',name:'已归档流程',spec:{flow:{nodes:[]}},revision:1,archived:true,created_at:version.created_at};
+  const item:Schema['CatalogObject']={id:'flow',kind:'workflow',name:'已归档流程',spec:{flow:{nodes:[]}},revision:1,archived:true,created_at:version.created_at,updated_at:version.created_at};
   vi.stubGlobal('fetch',vi.fn(async(url)=>String(url).endsWith('/archive')?new Response(null,{status:204}):Response.json(String(url).endsWith('/catalog/flow')?{...item,revision:2,name:'另一成员的更新',archived:false}:String(url).includes('/runnables')?{items:[]}:[])));
   render(<FlowStudio access={access} item={item}/>);
   fireEvent.click(screen.getByRole('button',{name:'恢复工作流'}));
@@ -87,7 +107,7 @@ test('归档工作流可恢复，编辑入口随之开放',async()=>{
   expect((screen.getByRole('button',{name:'保存草稿'}) as HTMLButtonElement).disabled).toBe(true);
 });
 test('保存冲突保留本地输入并禁止发布',async()=>{
-  const item:Schema['CatalogObject']={id:'flow',kind:'workflow',name:'原名',spec:{flow:{nodes:[]}},revision:1,archived:false,created_at:version.created_at};
+  const item:Schema['CatalogObject']={id:'flow',kind:'workflow',name:'原名',spec:{flow:{nodes:[]}},revision:1,archived:false,created_at:version.created_at,updated_at:version.created_at};
   vi.stubGlobal('fetch',vi.fn(async(url,options)=>options?.method==='PUT'?Response.json({error:'conflict'},{status:409}):Response.json(String(url).includes('/runnables')?{items:[]}:[])));
   render(<FlowStudio access={access} item={item}/>);fireEvent.change(screen.getByLabelText('工作流名称'),{target:{value:'我的修改'}});
   fireEvent.click(screen.getByRole('button',{name:'保存草稿'}));await screen.findByRole('alert');

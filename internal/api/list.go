@@ -47,6 +47,7 @@ func (h handler) projectList(ctx context.Context, items []workspace.Project) ([]
 			}
 			if !admin {
 				item.Source = ""
+				item.Perforce = nil
 			}
 			out = append(out, item)
 		}
@@ -57,6 +58,13 @@ func (h handler) projectList(ctx context.Context, items []workspace.Project) ([]
 func (h handler) runList(ctx context.Context, out *scheduler.RunList) error {
 	items := []scheduler.RunSummary{}
 	for _, item := range out.Items {
+		public, err := h.businessRun(ctx, item)
+		if err != nil {
+			return err
+		}
+		if !public {
+			continue
+		}
 		ok, err := h.visible(ctx, item.ProjectID, "read")
 		if err != nil {
 			return err

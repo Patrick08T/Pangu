@@ -30,7 +30,7 @@ func TestArchivedVersionReturnsExistingReceiptButRejectsNewOrChangedRequest(t *t
 	if err := database.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
-	p, err := workspace.Register(ctx, "api-test", workspace.Project{Name: "归档回执", Source: t.TempDir(), Branch: "main", WorkerID: "test"})
+	p, err := workspace.Register(ctx, "api-test", workspace.Project{VCS: "git", Name: "归档回执", Source: t.TempDir(), Branch: "main", WorkerID: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}

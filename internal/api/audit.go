@@ -6,18 +6,11 @@ import (
 )
 
 func (h handler) auditList(w http.ResponseWriter, r *http.Request) {
-	for key := range r.URL.Query() {
-		if key != "offset" && key != "project_id" {
-			problem(w, 400, "只接受 offset 和 project_id")
-			return
-		}
-	}
-	offset, err := catalogQuery(r.URL.Query(), false)
+	project, offset, err := projectQuery(r.URL.Query(), false)
 	if err != nil {
 		problem(w, 400, err.Error())
 		return
 	}
-	project := r.URL.Query().Get("project_id")
 	action := "manage_members"
 	if project == "" {
 		action = "admin"

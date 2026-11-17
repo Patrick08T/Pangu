@@ -1,0 +1,128 @@
+{
+  "format": "pangu.catalog.v1",
+  "kind": "workflow",
+  "name": "后端需求开发、独立QA与本地交付工作流",
+  "spec": {
+    "flow": {
+      "nodes": [
+        {
+          "id": "plan",
+          "agent_version": "7052d2b2-4f10-4fc8-8a22-06402c73e8cd"
+        },
+        {
+          "id": "qa_design",
+          "agent_version": "5bbc2f1e-e980-4bd5-9fe7-819aa92d27ff",
+          "depends_on": [
+            "plan"
+          ]
+        },
+        {
+          "approval": {
+            "source_node": "qa_design",
+            "revision_nodes": [
+              "plan",
+              "qa_design"
+            ]
+          },
+          "id": "implement",
+          "agent_version": "7606461e-8f42-4b80-a8c1-eed9c196bf83",
+          "depends_on": [
+            "plan",
+            "qa_design"
+          ]
+        },
+        {
+          "id": "repair",
+          "agent_version": "7606461e-8f42-4b80-a8c1-eed9c196bf83",
+          "depends_on": [
+            "plan",
+            "qa_design",
+            "implement"
+          ],
+          "task": "仅在 implement 已消费人工批准后执行。在同一批准范围、需求、QA用例和当前累计代码上修复确认缺陷。首轮核对 implement 的实际自测与未完成项，无代码缺陷时保留已有实现并交接，不重复开发；后续按 iteration.feedback 读取独立质量门原始报告，修复失败项及必要测试，保留有效补丁。不改变业务规则、验收标准、预算、权限或本地部署范围，不提交、推送或部署。新歧义或权限不足时停止受影响动作并报告，不盲目改代码。交付完整需求与QA用例索引、本轮缺陷与修复映射、真实测试命令及结果、累计变更、未解决项和本地启动/回退说明。是否通过由独立 repair_review 决定，不能自审放行。"
+        },
+        {
+          "id": "repair_review",
+          "agent_version": "e7269faf-1968-4789-9595-354bdb6997ac",
+          "depends_on": [
+            "plan",
+            "qa_design",
+            "implement",
+            "repair"
+          ],
+          "task": "只读核验本轮累计代码修复，不能修改实现、测试、配置或受验标准。本门只判断已批准范围内、当前工作区可执行的代码检查是否通过，不能代替循环外的完整功能、性能、安全和产品验收。按任务与缺陷编号核对上游问题及本轮修复；实际执行适用回归，检查错误路径与授权范围，不只复述开发自测。当前代码与证据未变化时引用同版本有效结果，避免重复全仓扫描；改动影响的行为必须重新验证。使用 iteration.feedback 逐项核销前轮失败，不扩展需求或将非阻断风格建议作为返修理由。\n先读取 C:/Users/pengtaotao/.codex/skills/open-code-review-delegate/SKILL.md，执行 ocr delegate preview --from <revision.origin_commit> --to <revision.head_commit> 和 ocr delegate rule，由本角色按规则逐文件审查累计补丁，并覆盖必要测试；禁止以干净工作区空差异冒充审查，不使用 ocr review/scan。Perforce 使用 --repo <revision.review_repository> 和 git -C 读取快照，完整上下文用 git show <revision.head_commit>:<path>；实际测试在 workspace 执行，不 checkout 或修改快照仓库。各门使用自己的 revision，提交号变化不等于代码变化，content_revision 由平台生成，不能自行填写。\n最终按 report_schema 输出完整 JSON，passed 仅表示本门代码修复检查通过，summary 非空；details 保留修复任务、缺陷编号与逐项验证、原始报告引用、累计变更、必要部署说明，以及尚待循环外验证的环境或业务事项，evidence 记录真实命令、退出状态与报告来源。平台保存报告并生成 passed/summary 摘要，下游按 report_ids 读取完整交接。仍有代码缺陷或本门必需工具、证据不足时 passed=false，并给下一轮最小修复动作；全部本门检查满足才 true。范围外事项不得冒充已通过：市场、共享环境或本地部署后的完整验收留给循环外节点，原有补证机制与验收标准保持不变。不提交、推送、部署或发送消息；不使用 evidence_blockers，取消、预算与执行异常由平台处理。",
+          "read_only": true,
+          "output_schema": {
+            "required": [
+              "passed",
+              "summary"
+            ],
+            "type": "object",
+            "properties": {
+              "passed": {
+                "type": "boolean"
+              },
+              "summary": {
+                "type": "string"
+              }
+            }
+          },
+          "report_schema": {
+            "required": [
+              "passed",
+              "summary",
+              "details",
+              "evidence"
+            ],
+            "type": "object",
+            "properties": {
+              "details": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "passed": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        {
+          "id": "local_deploy",
+          "agent_version": "68458cf0-f2ac-4c9c-a5c8-7443ed6a7876",
+          "depends_on": [
+            "implement",
+            "repair_review"
+          ],
+          "task": "在原批准的本地部署范围内执行一次。先读取本轮 repair_review 完整报告取得最终累计修复、自测、OCR和启动回退说明，并核对 implement 的原始批准交接；不能部署修复前产物。本地服务版本必须对应当前检查点，部署、数据初始化与外部副作用不放入代码修复循环。其余角色权限、环境前提与数据保护要求保持不变。"
+        },
+        {
+          "id": "qa_test",
+          "agent_version": "21bab00d-247d-4470-af01-409d4f02542b",
+          "depends_on": [
+            "local_deploy"
+          ]
+        }
+      ],
+      "loops": [
+        {
+          "gates": [
+            "repair_review"
+          ],
+          "nodes": [
+            "repair",
+            "repair_review"
+          ],
+          "id": "implementation_repair"
+        }
+      ]
+    }
+  }
+}

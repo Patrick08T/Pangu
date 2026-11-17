@@ -20,6 +20,8 @@ main:has(.flow-studio) .page-heading { margin-bottom: 22px; }
 .flow-card.selected { border:2px solid #365d8c; padding:15px; box-shadow:0 0 0 3px #365d8c15; }
 .flow-card.invalid { border-color:#bc7030; }.flow-card>small { display:block; color:#66758a; margin-top:12px; }
 .flow-card-title { display:flex; align-items:center; gap:10px; }.flow-card-title strong { font-size:14px; white-space:normal; overflow-wrap:anywhere; }
+.flow-card-role { margin-top:8px; font-size:12px; line-height:1.5; color:#365d8c; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; }
+.flow-assistant-role { display:block; overflow-wrap:anywhere; }
 .flow-badges { display:flex; gap:6px; margin-top:12px; }.flow-badges span { font-size:11px; padding:3px 6px; background:#edf2f9; border-radius:4px; }
 .flow-canvas .react-flow__handle { width:11px; height:11px; border:2px solid white; background:#59799f; }.flow-canvas .react-flow__edge-path { stroke:#7892b0; stroke-width:2; }
 .flow-canvas .react-flow__controls-button { padding:6px; border-radius:0; box-sizing:content-box; }.flow-canvas .react-flow__minimap { width:130px; height:90px; }

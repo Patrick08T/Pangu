@@ -8,7 +8,6 @@ import (
 	"github.com/Patrick08T/Pangu/internal/database"
 	"github.com/Patrick08T/Pangu/internal/workflow"
 	"github.com/Patrick08T/Pangu/internal/workspace"
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -48,20 +47,8 @@ func Persist(ctx context.Context, run, node, project string, execute func() (wor
 }
 
 func save(ctx context.Context, conn *pgx.Conn, run, node string, out workflow.NodeOutput) error {
-	if len(out.Reports) != 1 || len(out.ReportIDs) != 1 || out.ReportIDs[0] != out.Reports[0].ID || out.RunID != node {
-		return errors.New("报告与节点结果不一致")
-	}
-	report := out.Reports[0]
-	if _, err := uuid.Parse(report.ID); err != nil || len(report.Markdown) > 1024*1024 {
-		return errors.New("报告 ID 或大小无效")
-	}
-	data, err := json.Marshal(out)
-	if err != nil {
-		return err
-	}
-	evidence, err := json.Marshal(out.Evidence)
-	if err != nil {
-		return err
+	if len(out.Reports) != 1 {
+		return errors.New("研究节点必须生成完整报告")
 	}
 	tx, err := conn.Begin(ctx)
 	if err != nil {
@@ -78,8 +65,7 @@ func save(ctx context.Context, conn *pgx.Conn, run, node string, out workflow.No
 	if cancelled {
 		return errors.New("运行已取消，拒绝发布报告")
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO pangu.research_reports(id,run_id,node_run_id,title,body,output,evidence,metadata) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, report.ID, run, node, report.Title, []byte(report.Markdown), data, evidence, report.Metadata)
-	if err != nil {
+	if err = workspace.SaveReport(ctx, tx, run, node, out); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -88,6 +74,26 @@ func save(ctx context.Context, conn *pgx.Conn, run, node string, out workflow.No
 type Record struct {
 	ID, Title string
 	Body      []byte
+}
+
+// Checkpoint 读取已原子保存的研究结果；研究不产生文件提交。
+func Checkpoint(ctx context.Context, run, node string) (workflow.NodeOutput, error) {
+	var out workflow.NodeOutput
+	conn, err := database.Open(ctx)
+	if err != nil {
+		return out, err
+	}
+	defer conn.Close(context.Background())
+	var raw, body []byte
+	var report workflow.Report
+	err = conn.QueryRow(ctx, `SELECT r.output,r.id::text,r.title,r.body FROM pangu.research_reports r JOIN pangu.workspace_runs w ON w.run_id=r.run_id
+ WHERE r.run_id=$1 AND r.node_run_id=$2 AND w.expired_at IS NULL`, run, node).Scan(&raw, &report.ID, &report.Title, &body)
+	if err == nil {
+		err = json.Unmarshal(raw, &out)
+		report.Markdown = string(body)
+		out.Reports = []workflow.Report{report}
+	}
+	return out, err
 }
 
 func Reports(ctx context.Context, run string) ([]Record, error) {

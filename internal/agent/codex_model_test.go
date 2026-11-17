@@ -87,7 +87,7 @@ func codexConnectionInput(t *testing.T, modelName string) (workflow.NodeInput, s
 		t.Fatal(err)
 	}
 	ns := uuid.NewString()
-	p, err := workspace.Register(ctx, ns, workspace.Project{Name: "Codex 桥接测试", Source: t.TempDir(), Branch: "main", WorkerID: "test"})
+	p, err := workspace.Register(ctx, ns, workspace.Project{VCS: "git", Name: "Codex 桥接测试", Source: t.TempDir(), Branch: "main", WorkerID: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}

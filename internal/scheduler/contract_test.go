@@ -47,6 +47,13 @@ func TestRunQueryAcceptsProjectAndCancellingStatus(t *testing.T) {
 	}
 }
 
+func TestRunQueryAcceptsWaitingApproval(t *testing.T) {
+	q, err := ParseRunQuery(url.Values{"status": {"waiting_approval"}}, time.Now())
+	if err != nil || q.Status != "waiting_approval" {
+		t.Fatalf("不能筛选待审批运行: %+v %v", q, err)
+	}
+}
+
 func TestNodeProjectionExcludesInternalPayloadAndKeepsAttempt(t *testing.T) {
 	var row rest.V1TaskSummary
 	err := json.Unmarshal([]byte(`{"status":"FAILED","retryCount":2,"input":{"node":{"id":"writer","executor":"eino","instruction":"private"}},"output":{},"errorMessage":"token=private-secret","additionalMetadata":{"pangu_node_id":"writer"}}`), &row)
@@ -75,5 +82,31 @@ func TestProjectionOmitsHatchetEmptyErrorsAndZeroTimes(t *testing.T) {
 	node := nodeRun(row)
 	if node.Error != nil || node.StartedAt != nil || node.FinishedAt != nil {
 		t.Fatalf("空错误或零值时间被展示为真实结果: %+v", node)
+	}
+}
+
+func TestRunningAndRecoveredNodeDoNotExposeOldHatchetError(t *testing.T) {
+	for _, status := range []string{"RUNNING", "QUEUED", "COMPLETED"} {
+		var row rest.V1TaskSummary
+		if err := json.Unmarshal([]byte(`{"status":"`+status+`","errorMessage":"上一轮失败，恢复后引擎仍保留诊断"}`), &row); err != nil {
+			t.Fatal(err)
+		}
+		if node := nodeRun(row); node.Error != nil {
+			t.Fatalf("恢复状态 %s 仍显示终态错误: %+v", status, node.Error)
+		}
+	}
+}
+
+func TestRunErrorOnlyUsesCurrentFailureState(t *testing.T) {
+	old := "上一轮模型故障"
+	for _, state := range []string{"queued", "running", "waiting_approval", "revising_plan", "succeeded"} {
+		if stateError(state, &old) != nil {
+			t.Fatal("活动或成功运行显示旧错误", state)
+		}
+	}
+	for _, state := range []string{"failed", "cancelled"} {
+		if stateError(state, &old) == nil {
+			t.Fatal("当前失败诊断被隐藏", state)
+		}
 	}
 }

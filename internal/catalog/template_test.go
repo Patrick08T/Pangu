@@ -18,7 +18,7 @@ func TestFlowStepTaskSchemaAndReadOnlySurvivePublishing(t *testing.T) {
 	item.Spec.Flow.Nodes[1].Task = "执行单一优化"
 	item.Spec.Flow.Nodes[1].DependsOn = []string{"a"}
 	item.Spec.Flow.Nodes[1].When = &workflow.Condition{Field: workflow.FieldBinding{From: "a", Pointer: "/ready", Type: "boolean"}, Equals: []byte("true")}
-	item.Spec.Flow.Nodes[1].Approval = &workflow.Approval{TimeoutSeconds: 1800}
+	item.Spec.Flow.Nodes[1].Approval = &workflow.Approval{SourceNode: "a", RevisionNodes: []string{"a"}}
 	item, err := Save(ctx, ns, item.ID, item.Revision, item.Name, item.Spec)
 	if err != nil {
 		t.Fatal(err)

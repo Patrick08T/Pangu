@@ -4,6 +4,22 @@ import type {Schema} from '../console/components';
 
 beforeEach(()=>vi.stubGlobal('scrollTo',vi.fn()));
 afterEach(()=>{cleanup();vi.unstubAllGlobals();vi.useRealTimers();});
+
+test('循环切换历史执行时按节点运行 ID 隔离日志和尝试',async()=>{
+  const fetch=requests();
+  const history={...run.nodes[0],id:'old-round',loop_id:'bugs',loop_round:1,status:'succeeded',output:'第一轮证据'} as Schema['NodeRun'];
+  const latest={...run.nodes[0],id:'new-round',loop_id:'bugs',loop_round:2,output:'第二轮证据'};
+  const definition={...run.definition!,loops:[{id:'bugs',nodes:['a','b'],gates:['b']}]};
+  render(<RunDebugger run={{...run,definition,nodes:[latest,history]}}/>);
+  fireEvent.click(screen.getByRole('button',{name:/a\s*eino/}));
+  expect(screen.getByText('第二轮证据')).toBeTruthy();
+  expect(await screen.findByText(/调研目标/)).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('循环执行记录'),{target:{value:'old-round'}});
+  expect(screen.getByText('第一轮证据')).toBeTruthy();
+  expect(screen.queryByText(/调研目标/)).toBeNull();
+  expect(screen.getByText('当前输入预览不代表历史轮次；请查看所选执行的追踪和证据。')).toBeTruthy();
+  await waitFor(()=>expect(fetch.mock.calls.some(([url])=>url.includes('node_run_id=old-round'))).toBe(true));
+});
 const run={id:'r',logs_expired:false,stop_confirmed:true,definition:{input:'用户目标',nodes:[{id:'a',executor:'eino',instruction:'分析'},{id:'b',executor:'codex',instruction:'实现',depends_on:['a']}]},nodes:[{id:'na',node_id:'a',executor:'eino',attempt:2,status:'failed',error:{category:'model',message:'模型请求失败'}},{id:'nb',node_id:'b',executor:'codex',attempt:0,status:'skipped'}]} as Schema['RunDetails'];
 function requests(){const fetch=vi.fn(async(url:string)=>new Response(JSON.stringify(url.endsWith('/activity')?[]:url.includes('/trace?')?{items:[]}:url.endsWith('/inputs')?[{node_id:'a',state:'ready',parameters:{goal:'调研目标'}},{node_id:'b',state:'skipped',parameters:{}}]:url.includes('/attempts?')?{items:[1,2].map(attempt=>({node_run_id:'na',node_id:'a',attempt,status:'failed'}))}:{node_id:'a',attempt:2,category:'model',message:'本次诊断',evidence:[],truncated:false})));vi.stubGlobal('fetch',fetch);return fetch;}
 test('选中运行节点后集中查看输入、错误和所选重试证据，切换不残留上一节点',async()=>{

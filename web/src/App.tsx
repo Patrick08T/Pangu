@@ -7,7 +7,7 @@ import {Routes} from './console/routes';
 function Login({error,retry}:{error?:Error;retry:()=>void}) {
   const unavailable=!!error&&(!(error instanceof APIError)||error.status!==401);
   return <main className="login"><a className="brand" href="/"><span>P</span>PANGU</a><p className="eyebrow">AGENT 工厂</p><h1>让任务有序执行</h1><p className="intro">通过对话创建助手与工作流，并追踪每一次执行。</p>
-    {unavailable?<ErrorNotice error={error} retry={retry}/>:<><p>使用已登记的飞书身份进入工作空间。</p><a className="button primary" href="/api/auth/login">使用飞书登录</a></>}
+    {unavailable?<ErrorNotice error={error} retry={retry}/>:<><p>使用已登记的飞书身份进入工作空间。登录状态保留 30 天，到期后需重新登录；退出登录会立即失效。</p><a className="button primary" href="/api/auth/login">使用飞书登录</a></>}
     <p className="muted">首次使用需要维护者配置飞书应用，并由管理员登记项目成员。</p></main>;
 }
 
@@ -26,7 +26,7 @@ function Workspace({session,logout}:{session:Session;logout:()=>void}) {
   useEffect(()=>{const change=()=>{if(leaveAllowed())setRoute(window.location.hash.slice(1)||'/factory');else window.history.replaceState(null,'',`#${route}`);};window.addEventListener('hashchange',change);return()=>window.removeEventListener('hashchange',change);},[route]);
   const project=projects.data?.some(item=>item.id===selected)?selected:projects.data?.[0]?.id??'';
   const access:Access={session,project,role:session.admin?'manager':memberships.data?.find(item=>item.project_id===project)?.role??'',catalogManager:session.admin||memberships.data?.some(item=>item.role==='manager')};
-  const nav=[['factory','工厂助手'],['runs','任务记录'],['agent','Agent 角色'],['workflow','工作流'],['schedules','自动化']];
+  const nav=[['factory','工厂助手'],['runs','任务记录'],['approvals','人工审核'],['agent','Agent 角色'],['workflow','工作流'],['schedules','自动化'],['experience','经验与进化']];
   async function signOut(){if(!leaveAllowed())return;await apiRequest('/auth/logout',{method:'POST',csrf:session.csrf});logout();}
   return <div className="workspace"><aside><a className="brand" href="#/factory"><span>P</span>PANGU</a>
     <label className="field project-select">当前项目<select aria-label="当前项目" value={project} onChange={e=>{if(leaveAllowed())setSelected(e.target.value);}}>{!projects.data?.length&&<option value="">尚无项目</option>}{projects.data?.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>

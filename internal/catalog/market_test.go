@@ -67,7 +67,7 @@ func TestMarketIterationPublishedRolesCompile(t *testing.T) {
 		t.Fatal(err)
 	}
 	data, _ := json.Marshal(d)
-	if len(data) > 256*1024 || len(d.Nodes) != 24 {
+	if len(data) > 256*1024 || len(d.Nodes) != 25 {
 		t.Fatal("流程超过提交限制或缺少步骤", len(data))
 	}
 }
@@ -82,11 +82,11 @@ func marketDefinition(t *testing.T) workflow.Definition {
 	if err = json.Unmarshal(raw, &item); err != nil || item.Validate() != nil {
 		t.Fatal("市场迭代流程定义无效", err)
 	}
-	d := workflow.Definition{ProjectID: uuid.NewString(), InputSchema: item.Spec.Flow.Parameters, Budget: item.Spec.Flow.Budget,
+	d := workflow.Definition{ProjectID: uuid.NewString(), InputSchema: item.Spec.Flow.Parameters, Budget: item.Spec.Flow.Budget, Loops: item.Spec.Flow.Loops,
 		Input: `{"question":"合成流程验证","context":"已有产品与路线图","constraints":"仅验证路由","public_queries":["公开产品说明"]}`}
 	for _, binding := range item.Spec.Flow.Nodes {
 		node := workflow.Node{ID: binding.ID, Executor: "codex", Instruction: binding.Task, Handoff: testHandoff(),
-			DependsOn: binding.DependsOn, ReadOnly: binding.ReadOnly, OutputSchema: binding.OutputSchema, When: binding.When, Approval: binding.Approval}
+			DependsOn: binding.DependsOn, ReadOnly: binding.ReadOnly, OutputSchema: binding.OutputSchema, ReportSchema: binding.ReportSchema, When: binding.When, Approval: binding.Approval}
 		if binding.ID == "market_research" {
 			node.Executor, node.Role, node.Mode = "eino", "product_manager", "research"
 			node.Model = "test"
@@ -99,15 +99,15 @@ func marketDefinition(t *testing.T) workflow.Definition {
 func TestMarketIterationBlueprintReviewBeforeWrite(t *testing.T) {
 	d := marketDefinition(t)
 	layers, err := d.Layers()
-	if err != nil || len(layers) != len(d.Nodes) || len(d.Nodes) != 24 {
-		t.Fatal("流程必须按固定角色串行执行且包含完整迭代阶段", err)
+	if err != nil || len(layers) >= len(d.Nodes) || len(d.Nodes) != 25 {
+		t.Fatal("流程必须保留完整阶段并允许独立只读核验并行", err)
 	}
 	approvals, passedApproval := 0, false
 	for _, n := range d.Nodes {
 		if n.Approval != nil {
 			approvals++
 			passedApproval = true
-			if n.ID != "apply_plan" || n.When == nil || n.When.Field.From != "execution_plan" || n.When.Field.Pointer != "/ready" {
+			if !n.Approval.ExecutionPlan || n.ID != "apply_plan" || n.When == nil || n.When.Field.From != "execution_plan" || n.When.Field.Pointer != "/ready" {
 				t.Fatal("审批没有绑定完整执行计划")
 			}
 		}
@@ -123,20 +123,54 @@ func TestMarketIterationBlueprintReviewBeforeWrite(t *testing.T) {
 	}
 }
 
+func TestMarketIterationExcludesHumanValidationWork(t *testing.T) {
+	d := marketDefinition(t)
+	for _, n := range d.Nodes {
+		if !strings.Contains(n.Instruction, "【自动化范围】") {
+			t.Errorf("%s 未明确规划及验收排除范围", n.ID)
+		}
+		for _, old := range []string{"样本招募方案", "需求强度、替代品不足、触达与付费证据", "市场采纳及商业收益单列后续验证"} {
+			if strings.Contains(n.Instruction, old) {
+				t.Errorf("%s 仍主动布置人力验证：%s", n.ID, old)
+			}
+		}
+		if n.ID == "acceptance" && !strings.Contains(n.Instruction, "**范围说明：") {
+			t.Error("最终结论缺少可选加粗范围说明")
+		}
+	}
+}
+
+func TestMarketPlanBindsExecutionGraphAndEvidenceWait(t *testing.T) {
+	d := marketDefinition(t)
+	for _, n := range d.Nodes {
+		if n.ID == "execution_plan" && n.ReportSchema.Properties["execution_plan"].Type != "object" {
+			t.Fatal("计划缺少可校验的执行图")
+		}
+		if n.ID == "qa_recheck" || n.ID == "performance_recheck" || n.ID == "acceptance" {
+			if !n.ReadOnly || n.ReportSchema == nil || n.ReportSchema.Properties["evidence_blockers"].Type != "array" {
+				t.Fatal("核验未提供持久补证契约", n.ID)
+			}
+		}
+	}
+}
+
 func TestMarketIterationBlueprintBlockedAndRepairPaths(t *testing.T) {
 	d := marketDefinition(t)
 	for _, blocked := range []bool{false, true} {
 		called := map[string]bool{}
 		_, err := workflow.Run(d, func(inputs []workflow.NodeInput) ([]workflow.NodeOutput, error) {
-			n := inputs[0].Node
-			called[n.ID] = true
-			if n.ID == "market_research" {
-				return []workflow.NodeOutput{{Text: "合成研究报告"}}, nil
+			results := []workflow.NodeOutput{}
+			for _, input := range inputs {
+				n := input.Node
+				called[n.ID] = true
+				if n.ID == "market_research" {
+					results = append(results, workflow.NodeOutput{Text: "合成研究报告"})
+					continue
+				}
+				ready := !(blocked && n.ID == "execution_plan") && n.ID != "qa_validation"
+				results = append(results, marketOutput(n, ready, "路由验证，不代表业务通过"))
 			}
-			ready := !(blocked && n.ID == "execution_plan") && n.ID != "qa_validation"
-			raw, _ := json.Marshal(map[string]any{"ready": ready, "status": "合成结果", "summary": "路由验证，不代表业务通过", "iteration_complete": false,
-				"evidence": []string{}, "gaps": []string{}, "artifacts": []string{}, "tasks": []any{}})
-			return []workflow.NodeOutput{{Text: string(raw)}}, nil
+			return results, nil
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -147,4 +181,56 @@ func TestMarketIterationBlueprintBlockedAndRepairPaths(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestMarketIterationAcceptsLongStructuredContextThroughTransport(t *testing.T) {
+	d := marketDefinition(t)
+	calls := 0
+	outputs, err := workflow.Run(d, func(inputs []workflow.NodeInput) ([]workflow.NodeOutput, error) {
+		calls += len(inputs)
+		results := []workflow.NodeOutput{}
+		for _, input := range inputs {
+			n := input.Node
+			out := workflow.NodeOutput{Text: "合成研究报告"}
+			if n.ID != "market_research" {
+				summary := "合成路由验证"
+				if n.ID == "product_context" {
+					summary = strings.Repeat("有证据的现状", 600)
+				}
+				out = marketOutput(n, true, summary)
+			}
+			if err := workflow.ValidateOutput(n, &out); err != nil {
+				return nil, err
+			}
+			encoded, err := json.Marshal(out)
+			if err != nil {
+				return nil, err
+			}
+			var restored workflow.NodeOutput
+			if err := json.Unmarshal(encoded, &restored); err != nil {
+				return nil, err
+			}
+			results = append(results, restored)
+		}
+		return results, nil
+	})
+	if err != nil || calls != 25 || outputs["apply_plan"].Skipped || outputs["acceptance"].Text == "" {
+		t.Fatalf("长现状输出或结构化传输阻断流程：calls=%d, %v", calls, err)
+	}
+}
+
+func marketOutput(node workflow.Node, ready bool, summary string) workflow.NodeOutput {
+	value := map[string]any{"ready": ready, "status": "complete", "summary": summary, "iteration_complete": node.ID == "acceptance"}
+	if node.OutputSchema != nil && node.OutputSchema.Properties["passed"].Type == "boolean" {
+		value = map[string]any{"passed": ready, "summary": summary}
+	}
+	if node.ReportSchema == nil {
+		value["evidence"], value["gaps"], value["artifacts"], value["tasks"] = []string{}, []string{}, []string{}, []any{}
+	}
+	raw, _ := json.Marshal(value)
+	out := workflow.NodeOutput{Text: string(raw), ContentRevision: "合成代码摘要"}
+	if node.ReportSchema != nil {
+		out.ReportIDs, out.ReportSHA256 = []string{uuid.NewString()}, workflow.ReportHash(string(raw))
+	}
+	return out
 }

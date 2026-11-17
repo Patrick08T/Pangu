@@ -68,7 +68,7 @@ func EnsureRerun(ctx context.Context, runID, projectID, namespace, sourceRunID s
 	return ensure(ctx, runID, projectID, namespace, sourceRunID, "")
 }
 
-func ensure(ctx context.Context, runID, projectID, namespace, sourceRunID, sourceCommit string) error {
+func ensure(ctx context.Context, runID, projectID, namespace, sourceRunID, sourceCommit string) (result error) {
 	project, err := ProjectByID(ctx, namespace, projectID)
 	if err != nil {
 		return err
@@ -85,6 +85,11 @@ func ensure(ctx context.Context, runID, projectID, namespace, sourceRunID, sourc
 		return err
 	}
 	defer conn.Close(context.Background())
+	ctx, finish, err := beginProjectLocalOperation(ctx, conn, project, runID)
+	if err != nil {
+		return err
+	}
+	defer func() { result = finish(result) }()
 	if expired, err := Expired(ctx, runID); err != nil || expired {
 		if err != nil {
 			return err
@@ -112,15 +117,23 @@ func ensure(ctx context.Context, runID, projectID, namespace, sourceRunID, sourc
 		return ErrExpired
 	}
 	if !record.Ready {
-		return prepareRun(ctx, conn, record, project.Source, sourceRunID)
+		if project.VCS == "perforce" && project.Source != "" {
+			sourceRunID = ""
+		}
+		return prepareRun(ctx, conn, record, projectSource(project, record), sourceRunID)
 	}
-	_, err = git(ctx, filepath.Join(record.Directory, "base"), "cat-file", "-e", record.HeadCommit+"^{commit}")
-	return err
+	return inspectRunCommit(ctx, conn, record, record.HeadCommit)
 }
 
 func createRun(ctx context.Context, conn *pgx.Conn, id, root string, project *Project, sourceRunID, sourceCommit string) (*Run, error) {
-	commit, err := initialCommit(ctx, project, sourceRunID)
+	commit, err := projectCommit(ctx, conn, id, root, project, sourceRunID)
 	if err == nil && sourceCommit != "" {
+		if project.VCS == "perforce" {
+			equal, checkErr := sameLocalTrees(ctx, localObjectSource(filepath.Join(root, id)), sourceCommit, commit)
+			if checkErr != nil || !equal {
+				return nil, errors.New("本地 P4 现状与选定的复用检查点不同，请发起新运行；不会回退本地文件")
+			}
+		}
 		commit, err = forkCommit(ctx, sourceRunID, sourceCommit)
 	}
 	if err != nil {
@@ -134,6 +147,13 @@ func createRun(ctx context.Context, conn *pgx.Conn, id, root string, project *Pr
 }
 
 func prepareRun(ctx context.Context, conn *pgx.Conn, record *Run, source, sourceRunID string) error {
+	local, err := readPerforce(ctx, conn, record.ID)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
+	if err == nil && local.LocalRoot != "" {
+		return prepareLocalRun(ctx, conn, record, local)
+	}
 	base := filepath.Join(record.Directory, "base")
 	if _, err := os.Stat(base); os.IsNotExist(err) {
 		if sourceRunID != "" {
@@ -192,8 +212,8 @@ func Execute(ctx context.Context, runID, nodeRunID string, attempt int, readOnly
 	var checkpoint string
 	err = conn.QueryRow(ctx, "SELECT output,commit_id,evidence,evidence_truncated FROM pangu.workspace_checkpoints WHERE node_run_id=$1 AND run_id=$2", nodeRunID, runID).Scan(&output, &checkpoint, &evidence, &truncated)
 	if err == nil {
-		if _, err := git(ctx, filepath.Join(record.Directory, "base"), "cat-file", "-e", checkpoint+"^{commit}"); err != nil {
-			return workflow.NodeOutput{}, errors.New("已完成节点的文件检查点丢失")
+		if err := inspectRunCommit(ctx, conn, record, checkpoint); err != nil {
+			return workflow.NodeOutput{}, errors.Join(errors.New("已完成节点的文件检查点丢失"), err)
 		}
 		var result workflow.NodeOutput
 		err = json.Unmarshal(output, &result)
@@ -212,6 +232,13 @@ func Execute(ctx context.Context, runID, nodeRunID string, attempt int, readOnly
 func executeAttempt(ctx context.Context, conn *pgx.Conn, record *Run, nodeRunID string, attempt int, readOnly bool, execute func(string) (workflow.NodeOutput, error)) (workflow.NodeOutput, error) {
 	if _, err := uuid.Parse(nodeRunID); err != nil || attempt < 1 {
 		return workflow.NodeOutput{}, errors.New("节点运行或尝试编号无效")
+	}
+	local, localErr := readPerforce(ctx, conn, record.ID)
+	if localErr != nil && !errors.Is(localErr, pgx.ErrNoRows) {
+		return workflow.NodeOutput{}, localErr
+	}
+	if local != nil && local.LocalRoot != "" {
+		return executeLocalPerforce(ctx, conn, record, local, nodeRunID, attempt, readOnly, execute)
 	}
 	base := filepath.Join(record.Directory, "base")
 	path := filepath.Join(record.Directory, "attempt-"+uuid.NewString())
@@ -276,6 +303,9 @@ func publish(ctx context.Context, conn *pgx.Conn, record *Run, nodeRunID, commit
 	}
 	if cancelled {
 		return errors.New("运行已请求取消，拒绝发布文件检查点")
+	}
+	if err = SaveReport(ctx, tx, record.ID, nodeRunID, out); err != nil {
+		return err
 	}
 	_, err = tx.Exec(ctx, `INSERT INTO pangu.workspace_checkpoints(node_run_id,run_id,commit_id,output,evidence,evidence_truncated) VALUES($1,$2,$3,$4,$5,$6)`, nodeRunID, record.ID, commit, data, evidence, out.EvidenceTruncated)
 	if err != nil {

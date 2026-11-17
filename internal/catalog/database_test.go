@@ -25,7 +25,7 @@ func catalogDatabase(t *testing.T) (string, string, string) {
 	namespace := uuid.NewString()
 	projects := []string{}
 	for range 2 {
-		p, err := workspace.Register(context.Background(), namespace, workspace.Project{Name: "模板测试", Source: t.TempDir(), Branch: "main", WorkerID: "test"})
+		p, err := workspace.Register(context.Background(), namespace, workspace.Project{VCS: "git", Name: "模板测试", Source: t.TempDir(), Branch: "main", WorkerID: "test"})
 		if err != nil {
 			t.Fatal(err)
 		}

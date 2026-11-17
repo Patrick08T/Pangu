@@ -1,7 +1,7 @@
-﻿param([ValidateRange(1,65535)][int]$Port=8081, [ValidateSet('all','api','worker')][string]$Mode='all')
+﻿param([ValidateRange(1,65535)][int]$Port=8081, [ValidateSet('all','api','worker')][string]$Mode='all', [switch]$Installed)
 $ErrorActionPreference='Stop'
 $projectRoot=Split-Path $PSScriptRoot -Parent
-$binary=if(Test-Path -LiteralPath "$projectRoot/pangu.exe"){"$projectRoot/pangu.exe"}else{"$projectRoot/.tools/pangu.exe"}
+$binary=if($Installed){Join-Path $env:LOCALAPPDATA 'Pangu/bin/pangu.exe'}elseif(Test-Path -LiteralPath "$projectRoot/pangu.exe"){"$projectRoot/pangu.exe"}else{"$projectRoot/.tools/pangu.exe"}
 if(!(Test-Path -LiteralPath $binary)){throw '缺少 pangu.exe，请先构建或使用安装包'}
 $binary=[IO.Path]::GetFullPath($binary)
 [IO.Directory]::CreateDirectory("$projectRoot/.tools") | Out-Null

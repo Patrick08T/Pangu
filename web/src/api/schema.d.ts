@@ -1,4 +1,528 @@
 export interface paths {
+    "/projects/{id}/experience-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        get: operations["getExperiencePolicy"];
+        put: operations["saveExperiencePolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/experience-capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        get: operations["getExperienceCapabilities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/experiences": {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["ExperienceCursor"];
+                limit?: components["parameters"]["ExperienceLimit"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        get: operations["listExperiences"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/experiences/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+                version: components["parameters"]["ExperienceVersionID"];
+            };
+            cookie?: never;
+        };
+        get: operations["getExperience"];
+        put?: never;
+        post?: never;
+        /** @description 不可逆撤销并清正文，保留审计墓碑；不得复活同一版本。 */
+        delete: operations["deleteExperience"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/experiences/{version}/usages": {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["ExperienceCursor"];
+                limit?: components["parameters"]["ExperienceLimit"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+                version: components["parameters"]["ExperienceVersionID"];
+            };
+            cookie?: never;
+        };
+        get: operations["listExperienceUsages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/experiences/{version}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+                version: components["parameters"]["ExperienceVersionID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["revokeExperience"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/experiences/{version}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+                version: components["parameters"]["ExperienceVersionID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description 执行预注册检查器并在激活事务里形成机器回执，禁止传入 Passed 或 receipt。验证正确不等于投放有收益。 */
+        post: operations["verifyExperienceClaim"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/experiences/{version}/delivery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+                version: components["parameters"]["ExperienceVersionID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["changeExperienceDelivery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/experience-sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["grantExperienceSource"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/experience-sources/{source}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+                source: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["withdrawExperienceSource"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/experience-checkers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        get: operations["listExperienceCheckers"];
+        put?: never;
+        post: operations["registerExperienceChecker"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/evolution/intents": {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["ExperienceCursor"];
+                limit?: components["parameters"]["ExperienceLimit"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        get: operations["listEvolutionIntents"];
+        put?: never;
+        /** @description 仅提交 Instruction 候选；角色、项目、当前配置和机器证据均由服务端重建。202 不是评测通过。 */
+        post: operations["startEvolutionCandidate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/evolution/intents/{intent}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+                intent: components["parameters"]["EvolutionIntentID"];
+            };
+            cookie?: never;
+        };
+        get: operations["getEvolutionIntent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/evolution/intents/{intent}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+                intent: components["parameters"]["EvolutionIntentID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["decideEvolutionIntent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/evolution/intents/{intent}/promote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+                intent: components["parameters"]["EvolutionIntentID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["promoteEvolutionIntent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/evolution/intents/{intent}/observe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+                intent: components["parameters"]["EvolutionIntentID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["observeEvolutionIntent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{id}/experience": {
+        parameters: {
+            query?: {
+                usage_cursor?: string;
+                artifact_cursor?: string;
+                limit?: components["parameters"]["ExperienceLimit"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        get: operations["runExperienceLineage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/experiences/{version}/observe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+                version: components["parameters"]["ExperienceVersionID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["observeExperienceMemory"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/experience-artifacts/{artifact}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+                artifact: string;
+            };
+            cookie?: never;
+        };
+        get: operations["experienceArtifactSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{id}/rebuild-intents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        get: operations["listApprovalRebuildIntents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{id}/rebuild-intents/{intent}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+                intent: components["parameters"]["EvolutionIntentID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["rebuildInvalidatedRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/evolution/intents/{intent}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+                intent: components["parameters"]["EvolutionIntentID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["rollbackEvolutionIntent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/evolution/environments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        get: operations["listEvolutionEnvironments"];
+        put?: never;
+        post: operations["registerEvolutionEnvironment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/entries/{entry}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+                /** @description 工作台入口裸ID，服务端固定workbench种类 */
+                entry: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["submitWorkbenchEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/runnables": {
+        parameters: {
+            query?: {
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        get: operations["projectRunnableChoices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/versions/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+                version: components["parameters"]["ExperienceVersionID"];
+            };
+            cookie?: never;
+        };
+        get: operations["projectCatalogVersion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/catalog/{object}/versions": {
+        parameters: {
+            query?: {
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+                object: string;
+            };
+            cookie?: never;
+        };
+        get: operations["projectCatalogVersions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/factory/sessions": {
         parameters: {
             query?: never;
@@ -210,6 +734,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runs/{id}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        get: operations["runEvidence"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runs/{id}/usage": {
         parameters: {
             query?: never;
@@ -376,6 +918,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/approvals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["browseApprovals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/approvals/{id}": {
         parameters: {
             query?: never;
@@ -385,10 +943,29 @@ export interface paths {
             };
             cookie?: never;
         };
-        get?: never;
+        get: operations["getApproval"];
         /** @description 飞书会话中的运行所有者或管理者批准/驳回；开始执行前可以撤回批准。API Token 不可代替人工审批。 */
         put: operations["decideApproval"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/approvals/{id}/repair": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description 从修正草稿冻结执行图差异和成功前缀，不发布、不执行；需要运行及配置管理权限。 */
+        post: operations["prepareEvidenceRepair"];
         delete?: never;
         options?: never;
         head?: never;
@@ -528,6 +1105,58 @@ export interface paths {
         get: operations["connectionChoices"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/workspace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["bindPerforceDirectory"];
+        trace?: never;
+    };
+    "/projects/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["checkProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{id}/perforce": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["perforceDelivery"];
+        put?: never;
+        post: operations["deliverPerforce"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1445,6 +2074,504 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ExperienceBudget: {
+            /** Format: int64 */
+            calls?: number;
+            /** Format: int64 */
+            tokens?: number;
+        };
+        ExperienceEvaluationPolicy: {
+            suite_version?: string;
+            protection_set?: string;
+            holdout_set?: string;
+            grouping?: string;
+            repeats?: number;
+            minimum_samples?: number;
+            /**
+             * @description 启用时只接受 capabilities.supported_metrics 中的真实可测指标
+             * @enum {string}
+             */
+            primary_metric?: "" | "acceptance" | "rework" | "cost" | "duration";
+            minimum_improvement?: number;
+            non_inferiority?: number | null;
+            uncertainty_method?: string;
+            confidence?: number;
+            max_candidates?: number;
+            multiple_comparison?: string;
+            resource_tolerance?: number | null;
+        };
+        ExperienceDeliveryPolicy: {
+            /** @enum {string} */
+            mode?: "" | "shadow" | "canary" | "serving" | "paused";
+            task_scope?: string[] | null;
+            traffic_basis_points?: number;
+        };
+        ExperienceObservationPolicy: {
+            /** Format: int64 */
+            window_seconds?: number;
+            minimum_samples?: number;
+            /** Format: int64 */
+            deadline_seconds?: number;
+            degradation_threshold?: number;
+            /** Format: int64 */
+            retention_seconds?: number;
+            source_retention_authorized?: boolean;
+        };
+        /** @description 默认关闭。enabled 控制新学习，read_enabled 独立控制已有记忆读取；停学不代表撤销。启用时所有范围、独立预算和评测门槛由服务端校验。 */
+        ExperiencePolicySettings: {
+            /** @default false */
+            enabled: boolean;
+            /** @default false */
+            read_enabled: boolean;
+            /** @default false */
+            auto_publish: boolean;
+            /** @default false */
+            revoked: boolean;
+            roles?: string[] | null;
+            workflows?: string[] | null;
+            entrypoints?: string[] | null;
+            extractor_version?: string;
+            generator_version?: string;
+            environments?: string[] | null;
+            learning_budget?: components["schemas"]["ExperienceBudget"];
+            evaluation_budget?: components["schemas"]["ExperienceBudget"];
+            /** Format: int64 */
+            budget_period_seconds?: number;
+            /** Format: int64 */
+            candidate_interval_seconds?: number;
+            evaluation?: components["schemas"]["ExperienceEvaluationPolicy"];
+            delivery?: components["schemas"]["ExperienceDeliveryPolicy"];
+            observation?: components["schemas"]["ExperienceObservationPolicy"];
+        };
+        ExperiencePolicy: {
+            /** Format: int64 */
+            revision: number;
+            enabled: boolean;
+            read_enabled: boolean;
+            auto_publish: boolean;
+            revoked: boolean;
+            roles: string[] | null;
+            workflows: string[] | null;
+            entrypoints: string[] | null;
+            extractor_version: string;
+            generator_version: string;
+            environments: string[] | null;
+            learning_budget: components["schemas"]["ExperienceBudget"];
+            evaluation_budget: components["schemas"]["ExperienceBudget"];
+            /** Format: int64 */
+            budget_period_seconds: number;
+            /** Format: int64 */
+            candidate_interval_seconds: number;
+            evaluation: components["schemas"]["ExperienceEvaluationPolicy"];
+            delivery: components["schemas"]["ExperienceDeliveryPolicy"];
+            observation: components["schemas"]["ExperienceObservationPolicy"];
+        };
+        ExperiencePolicyUpdate: {
+            /** Format: int64 */
+            expected_revision: number;
+            policy: components["schemas"]["ExperiencePolicySettings"];
+        };
+        ExperienceCapabilities: {
+            permissions: {
+                manage_policy?: boolean;
+                manage_sources?: boolean;
+                revoke?: boolean;
+                delete?: boolean;
+                rollback?: boolean;
+                submit_entry?: boolean;
+            };
+            features: {
+                memory_read?: boolean;
+                claim_verification?: boolean;
+                delivery_promotion?: boolean;
+                evolution?: boolean;
+                run_lineage?: boolean;
+                approval_rebuild?: boolean;
+                entry_submission?: boolean;
+            };
+            supported_metrics: string[];
+        };
+        ExperienceSummary: {
+            /** Format: uuid */
+            id: string;
+            entry_id: string;
+            /** Format: int64 */
+            revision: number;
+            /** @enum {string} */
+            validity: "candidate" | "active" | "superseded" | "revoked" | "expired";
+            /** @enum {string} */
+            delivery: "shadow" | "canary" | "serving" | "paused";
+            /** Format: int64 */
+            delivery_revision: number;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        ExperiencePage: {
+            items: components["schemas"]["ExperienceSummary"][];
+            next_cursor?: string;
+        };
+        ExperienceContent: {
+            kind: string;
+            observation: string;
+            practice: string;
+            conditions: string;
+            counterexamples: string;
+            applicability: {
+                roles: string[];
+                role_versions?: string[];
+                modules?: string[];
+                keywords?: string[];
+                error_signatures?: string[];
+            };
+        };
+        ExperienceSource: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            kind: "report" | "feedback";
+            /** Format: uuid */
+            run_id: string;
+            node_id: string;
+            /** Format: uuid */
+            project_id: string;
+            hash: string;
+        };
+        ExperienceVersion: {
+            /** Format: uuid */
+            id: string;
+            entry_id: string;
+            /** Format: int64 */
+            revision: number;
+            /** Format: uuid */
+            project_id: string;
+            body_hash: string;
+            content: components["schemas"]["ExperienceContent"];
+            sources: components["schemas"]["ExperienceSource"][];
+            /** @enum {string} */
+            validity: "candidate" | "active" | "superseded" | "revoked" | "expired";
+            /** @enum {string} */
+            delivery: "shadow" | "canary" | "serving" | "paused";
+            /** Format: int64 */
+            delivery_revision: number;
+            canary: components["schemas"]["ExperienceDeliveryPolicy"];
+            /** Format: date-time */
+            expires_at: string;
+            tombstoned: boolean;
+            invalid_reason: string;
+        };
+        ExperienceUsage: {
+            /** @description 冻结使用身份，可能是提交 request ID；不能当成已验证的 Hatchet run ID 跳转 */
+            run_id: string;
+            node_id: string;
+            iteration: number;
+            /** Format: int64 */
+            approval_generation: number;
+            /** Format: int64 */
+            approval_revision: number;
+            /** Format: date-time */
+            created_at: string;
+        };
+        ExperienceUsagePage: {
+            items: components["schemas"]["ExperienceUsage"][];
+            /** @description 不透明的 64 位十六进制游标，不是验收证据 */
+            next_cursor?: string;
+        };
+        ExperienceReason: {
+            reason: string;
+        };
+        ExperienceClaimRequest: {
+            /** Format: uuid */
+            checker_id: string;
+            /** Format: uuid */
+            intent_id: string;
+            /** Format: int64 */
+            generation: number;
+        };
+        ExperienceDeliveryRequest: {
+            /** Format: int64 */
+            expected_revision: number;
+            policy: components["schemas"]["ExperienceDeliveryPolicy"];
+            /**
+             * Format: uuid
+             * @description 仅定位服务端独立证据，不能提交评分或 Passed
+             */
+            evidence_id: string;
+        };
+        ExperienceSourceGrant: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            kind: "report" | "feedback";
+            /** Format: uuid */
+            run_id: string;
+            node_id: string;
+            hash: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        ExperienceCheckerSpec: {
+            /** @enum {string} */
+            kind: "json_assertion_v1";
+            content_hash: string;
+            /** @enum {string} */
+            source_kind: "report" | "feedback";
+            node_id: string;
+            json_pointer: string;
+            expected: boolean | number | string;
+        };
+        ExperienceCheckerRegistration: {
+            spec: components["schemas"]["ExperienceCheckerSpec"];
+            /** Format: date-time */
+            expires_at: string;
+        };
+        ExperienceChecker: {
+            /** Format: uuid */
+            id: string;
+            kind: string;
+            source_kind: string;
+            node_id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        ExperienceCheckerPage: {
+            items: components["schemas"]["ExperienceChecker"][];
+            next_cursor?: string;
+        };
+        EvolutionIntentSummary: {
+            /** @enum {string} */
+            kind?: "role_change" | "memory_benefit";
+            /**
+             * Format: uuid
+             * @description 真实冻结实验标识；不是机器回执或通过证明
+             */
+            experiment_id?: string;
+            /** Format: uuid */
+            benefit_memory_version_id?: string;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            project_id: string;
+            /** Format: int64 */
+            policy_revision: number;
+            generation: number;
+            /** @enum {string} */
+            state: "preparing" | "evaluating" | "passed" | "publishing" | "switching" | "observing" | "stabilizing" | "rolling_back" | "reconciling" | "stable" | "rolled_back" | "rejected" | "invalidated" | "insufficient";
+            publication?: {
+                /**
+                 * Format: uuid
+                 * @description 已发布角色版本 ID
+                 */
+                agent_id: string;
+                /**
+                 * Format: uuid
+                 * @description 已发布流程版本 ID
+                 */
+                flow_id?: string;
+            };
+            /** Format: date-time */
+            started_at: string;
+        };
+        EvolutionIntentPage: {
+            items: components["schemas"]["EvolutionIntentSummary"][];
+            next_cursor?: string;
+        };
+        ExperienceReference: {
+            /** Format: uuid */
+            version_id: string;
+            body_hash: string;
+            delivery_revision: number;
+        };
+        ExperienceArtifactReference: {
+            id: string;
+            hash: string;
+        };
+        ExperienceAuditState: {
+            /** @enum {string} */
+            status: "valid" | "invalid" | "unproven" | "restricted";
+            proven: boolean;
+            invalid_reason?: string;
+            redacted: boolean;
+        };
+        ExperienceWatermarkSummary: components["schemas"]["ExperienceAuditState"] & {
+            present: boolean;
+            generation: number;
+            policy_revision: number;
+            hash?: string;
+            references: components["schemas"]["ExperienceReference"][] | null;
+        };
+        ExperienceRunUsageSummary: components["schemas"]["ExperienceAuditState"] & {
+            node_id: string;
+            iteration: number;
+            approval_generation: number;
+            approval_revision: number;
+            match_reason: string;
+            injection_hash?: string;
+            references: components["schemas"]["ExperienceReference"][] | null;
+            /** Format: date-time */
+            created_at: string;
+        };
+        ExperienceArtifactSummary: components["schemas"]["ExperienceAuditState"] & {
+            id: string;
+            node_id: string;
+            kind: string;
+            output_hash?: string;
+            input_hash?: string;
+            execution_input_hash?: string;
+            generation: number;
+            references: components["schemas"]["ExperienceReference"][] | null;
+            parents: components["schemas"]["ExperienceArtifactReference"][] | null;
+        };
+        ExperienceRunUsagePage: {
+            items: components["schemas"]["ExperienceRunUsageSummary"][];
+            total: number;
+            has_more: boolean;
+            next_cursor?: string;
+        };
+        ExperienceArtifactPage: {
+            items: components["schemas"]["ExperienceArtifactSummary"][];
+            total: number;
+            has_more: boolean;
+            next_cursor?: string;
+        };
+        RunExperienceLineage: {
+            /** Format: uuid */
+            actual_run_id: string;
+            watermark: components["schemas"]["ExperienceWatermarkSummary"];
+            usages: components["schemas"]["ExperienceRunUsagePage"];
+            artifacts: components["schemas"]["ExperienceArtifactPage"];
+            /** @description 分页根成果不等于完整依赖闭包 */
+            chain_complete: boolean;
+        };
+        EvolutionCandidateRequest: {
+            /**
+             * @default role_change
+             * @enum {string}
+             */
+            kind: "role_change" | "memory_benefit";
+            /** Format: uuid */
+            benefit_memory_version_id?: string;
+            /** Format: uuid */
+            id: string;
+            policy_revision: number;
+            /** Format: uuid */
+            baseline_version: string;
+            /** Format: uuid */
+            environment_id: string;
+            /** Format: uuid */
+            suite_id: string;
+            /** @description 仅role_change可写，memory_benefit保持基线指令不变 */
+            instruction?: string;
+            /** Format: uuid */
+            flow_version?: string;
+            binding_ids?: string[];
+            memory_version_ids?: string[];
+            entries?: {
+                /** @enum {string} */
+                kind: "workbench" | "cron" | "webhook";
+                id: string;
+            }[];
+            budget: components["schemas"]["ExperienceBudget"];
+        } & ({
+            /** @enum {string} */
+            kind?: "role_change";
+            instruction: string;
+        } | {
+            /** @enum {string} */
+            kind: "memory_benefit";
+            instruction?: string;
+            memory_version_ids?: string[];
+        });
+        WorkbenchEntrySubmission: {
+            input: string;
+        };
+        ExperienceObservationRequest: {
+            /** Format: uuid */
+            run_id: string;
+        };
+        ExperienceObservation: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            version_id: string;
+            /** Format: uuid */
+            run_id: string;
+            /** Format: int64 */
+            delivery_revision: number;
+            /** Format: date-time */
+            finished_at: string;
+        };
+        EvolutionGeneration: {
+            generation: number;
+        };
+        EvolutionObservationRequest: {
+            generation: number;
+            /** Format: uuid */
+            run_id: string;
+        };
+        EvolutionDecision: {
+            outcome: string;
+            category: string;
+            decision_hash?: string;
+        };
+        ApprovalRebuildIntent: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            run_id: string;
+            node_id: string;
+            from_generation: number;
+            to_generation: number;
+            reason: string;
+            requires_stop: boolean;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            ready_at?: string;
+            /** Format: uuid */
+            successor_request_id?: string;
+            /** @description 当前身份与运行状态允许尝试重建；提交时仍重验基线和代际 */
+            can_rebuild: boolean;
+            blocked_reason?: string;
+        };
+        EvolutionRollback: {
+            generation: number;
+            reason: string;
+        };
+        EvolutionEnvironment: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            project_id: string;
+            /** Format: int64 */
+            revision: number;
+            /** @enum {string} */
+            backend: "eino_json_v1";
+            /** Format: uuid */
+            connection_version: string;
+            enabled: boolean;
+            currency: string;
+            source_baseline: string;
+            config_hash: string;
+        };
+        EvolutionEnvironmentUpdate: {
+            /** Format: uuid */
+            id: string;
+            /** Format: int64 */
+            expected_revision: number;
+            /** @enum {string} */
+            backend: "eino_json_v1";
+            /** Format: uuid */
+            connection_version: string;
+            enabled: boolean;
+        };
+        EvolutionEnvironmentPage: {
+            items: components["schemas"]["EvolutionEnvironment"][];
+            next_cursor?: string;
+        };
         DebugState: {
             paused: boolean;
             step_requested: boolean;
@@ -1495,6 +2622,11 @@ export interface components {
             connection_version: string;
             /** Format: uuid */
             target_id?: string;
+            /** @description 工厂对话的具体 Codex 模型，省略时继承连接或 Worker 默认；不修改候选 Agent 设置 */
+            model?: string;
+            reasoning_effort?: components["schemas"]["ReasoningEffort"];
+            /** @description 省略继承运行环境默认，false 明确关闭，true 开启 */
+            fast?: boolean;
             target_revision?: number;
             /** Format: uuid */
             source_run_id?: string;
@@ -1523,6 +2655,7 @@ export interface components {
             name: string;
             agents: components["schemas"]["FactoryAgent"][];
             steps?: components["schemas"]["FactoryStep"][];
+            loops?: components["schemas"]["Loop"][];
             /** Format: uuid */
             object_id?: string;
             revision?: number;
@@ -1598,13 +2731,21 @@ export interface components {
             checkpoints?: {
                 [key: string]: string;
             };
+            report_nodes?: {
+                [key: string]: boolean;
+            };
+            /** @description 复用研究正文在本次接续快照中的 SHA256，不改变来源历史输出格式 */
+            report_hashes?: {
+                [key: string]: string;
+            };
             reused?: {
                 [key: string]: {
                     text: string;
                     run_id: string;
-                    data?: {
-                        [key: string]: unknown;
-                    };
+                    report_ids?: string[];
+                    report_sha256?: string;
+                    iteration?: components["schemas"]["Iteration"];
+                    content_revision?: string;
                 };
             };
         };
@@ -1685,6 +2826,8 @@ export interface components {
             finished_at: string | null;
         };
         UsageReport: {
+            /** @description 新版本接续共同计入预算的来源运行；calls 仅列当前运行明细 */
+            budget_sources?: string[];
             /** @description 未主动设置调用预算时为 null，不施加平台默认上限。 */
             budget: components["schemas"]["Budget"] | null;
             used: components["schemas"]["Budget"];
@@ -1787,17 +2930,109 @@ export interface components {
             data: components["schemas"]["StructuredReport"] | null;
             reviews: components["schemas"]["ClaimReview"][];
         };
+        /** @description 执行前持久等待人工审批，不自动过期。 */
         ApprovalPolicy: {
-            /** @description 节点之前独立的人工审批等待期限。 */
-            timeout_seconds: number;
+            /** @description 校验结构化任务映射，审批执行图差异；批准后发布新版本并保留成果续跑 */
+            execution_plan?: boolean;
+            source_node: string;
+            revision_nodes: string[];
+        };
+        ReviewItem: {
+            id: string;
+            category: string;
+            title: string;
+            proposal: string;
+            rationale: string;
+            evidence_refs: string[];
+            task_ids: string[];
+            /**
+             * @description 有真实备选方案时提供，互斥方案单选，可组合方案多选。
+             * @enum {string}
+             */
+            selection_mode?: "single" | "multiple";
+            options?: components["schemas"]["ReviewOption"][];
+            /** @description 推荐组合；只作提示，不代表用户选择。 */
+            recommended_option_ids?: string[];
+            /** @description 当前计划采用的组合；未确定时可为空。与用户选择不同则须修订复审。 */
+            planned_option_ids?: string[];
+            recommendation_reason?: string;
+        };
+        ReviewOption: {
+            id: string;
+            label: string;
+            /** @description 方案的收益、成本、风险及适用条件。 */
+            description: string;
+        };
+        ReviewResolution: {
+            item_id: string;
+            /** @enum {string} */
+            status: "addressed" | "unresolved";
+            explanation: string;
+        };
+        Review: {
+            title: string;
+            summary: string;
+            items: components["schemas"]["ReviewItem"][];
+            resolutions: components["schemas"]["ReviewResolution"][];
+        };
+        ReviewAnswer: {
+            item_id: string;
+            /** @enum {string} */
+            decision: "accept" | "revise" | "reject";
+            correction: string;
+            /** @description 用户明确选择的方案组合；变更当前计划可直接作为纠偏，无需重复输入文本。 */
+            selected_option_ids?: string[];
+        };
+        ApprovalSummary: {
+            approval_generation: number;
+            invalidation_reason?: string;
+            /** Format: date-time */
+            invalidated_at?: string;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            run_id: string;
+            node_id: string;
+            title: string;
+            status: string;
+            round: number;
+            /** Format: date-time */
+            created_at: string;
+        };
+        ApprovalPage: {
+            items: components["schemas"]["ApprovalSummary"][];
+            next_offset?: number;
+        };
+        ApprovalDetails: {
+            approval: components["schemas"]["ApprovalGate"];
+            run_status: string;
+            stopped: boolean;
         };
         ApprovalDecision: {
+            /** @description 明确批准此修正方案；与原补证复验互斥，items 和 reason 必须为空 */
+            repair_hash?: string;
             subject_hash: string;
             /** @enum {string} */
-            decision: "approved" | "rejected" | "revoked";
+            decision: "approved" | "changes_requested" | "rejected" | "revoked";
             reason: string;
+            items: components["schemas"]["ReviewAnswer"][];
         };
         ApprovalGate: {
+            approval_generation: number;
+            invalidation_reason?: string;
+            /** Format: date-time */
+            invalidated_at?: string;
+            repair?: components["schemas"]["EvidenceRepair"];
+            /** @enum {string} */
+            purpose?: "evidence";
+            execution?: components["schemas"]["ExecutionPlanPreview"];
+            /** Format: uuid */
+            inherited_from?: string;
+            round: number;
+            /** Format: uuid */
+            previous_id?: string;
+            review?: components["schemas"]["Review"];
+            items: components["schemas"]["ReviewAnswer"][];
             /** Format: uuid */
             id: string;
             /** Format: uuid */
@@ -1812,17 +3047,35 @@ export interface components {
             } | null;
             head_commit: string;
             /** @enum {string} */
-            status: "waiting" | "approved" | "rejected" | "revoked" | "consumed" | "expired";
+            status: "waiting" | "approved" | "rejected" | "revoked" | "consumed" | "expired" | "changes_requested" | "invalidated";
             actor_id: string;
             reason: string;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
-            expires_at: string;
-            /** Format: date-time */
             decided_at: string | null;
             /** Format: date-time */
             consumed_at: string | null;
+        };
+        EvidenceRepairInput: {
+            subject_hash: string;
+            /** Format: uuid */
+            object_id: string;
+            revision: number;
+            checkpoint_node: string;
+            summary: string;
+        };
+        EvidenceRepair: {
+            /** Format: uuid */
+            id: string;
+            hash: string;
+            /** @enum {string} */
+            status: "prepared" | "approved" | "consumed";
+            summary: string;
+            checkpoint_node: string;
+            reused_nodes: string[];
+            execute_nodes: string[];
+            execution: components["schemas"]["ExecutionPlanPreview"];
         };
         FeedbackInput: {
             revision: number;
@@ -1928,6 +3181,9 @@ export interface components {
             items: {
                 id: string;
                 name: string;
+                reasoning_levels?: components["schemas"]["ReasoningEffort"][];
+                default_reasoning?: components["schemas"]["ReasoningEffort"];
+                fast?: boolean;
             }[];
         };
         ConnectionChoicePage: {
@@ -1938,6 +3194,8 @@ export interface components {
                 name: string;
                 number: number;
                 model: string;
+                /** @enum {string} */
+                provider: "codex" | "openai";
             }[];
         };
         AgentTrialInput: {
@@ -2008,24 +3266,60 @@ export interface components {
             request_id?: string;
         };
         ProjectRegistration: {
+            /** @enum {string} */
+            vcs: "git" | "perforce";
+            perforce?: components["schemas"]["PerforceConfig"];
             name: string;
-            /** @description 绑定 Worker 上的本地 Git 项目绝对路径 */
-            source: string;
+            /** @description Worker 上的本地目录。Git 为仓库路径；Perforce 为已存在 Client 的 Root/AltRoot，任务直接在该根目录的项目子目录执行。 */
+            source?: string;
             /** @description 本地分支，不自动 fetch */
-            branch: string;
+            branch?: string;
+            worker_id: string;
+            /** @description 管理员登记的验证命令参数数组，首项为Worker上的绝对程序路径；每个Codex节点成功后、检查点发布前执行，最长30秒。禁止凭据参数。不配置时为空数组。 */
+            verification?: string[];
+        } & ({
+            /** @enum {unknown} */
+            vcs?: "git";
+        } | {
+            /** @enum {unknown} */
+            vcs?: "perforce";
+        });
+        Project: {
+            /** @enum {string} */
+            vcs: "git" | "perforce";
+            perforce?: components["schemas"]["PerforceConfig"];
+            /** Format: uuid */
+            id: string;
+            name: string;
+            source?: string;
+            branch?: string;
             worker_id: string;
             /** @description 管理员登记的验证命令参数数组，首项为Worker上的绝对程序路径；每个Codex节点成功后、检查点发布前执行，最长30秒。禁止凭据参数。不配置时为空数组。 */
             verification?: string[];
         };
-        Project: {
-            /** Format: uuid */
-            id: string;
-            name: string;
-            source: string;
-            branch: string;
-            worker_id: string;
-            /** @description 管理员登记的验证命令参数数组，首项为Worker上的绝对程序路径；每个Codex节点成功后、检查点发布前执行，最长30秒。禁止凭据参数。不配置时为空数组。 */
-            verification?: string[];
+        PerforceConfig: {
+            /** @description host:port 或 ssl:host:port，不接受远程命令协议 */
+            port: string;
+            user: string;
+            /** @description 已存在的本地 Client；运行直接修改绑定工作区，已有 changelist 归属保持不变 */
+            client: string;
+            /** @description 相对于 Client 映射根的项目子目录；. 表示根目录 */
+            scope: string;
+        };
+        PerforceDelivery: {
+            /** @description 绑定的本地 P4 工作区根目录 */
+            local_directory?: string;
+            /** @description 本轮修改涉及但保持原归属的 changelist（包括 default），不会自动移入或 shelve 到本轮清单 */
+            existing_changelists?: string[];
+            /** Format: int64 */
+            baseline: number;
+            client: string;
+            checkpoint: string;
+            /** Format: int64 */
+            changelist?: number;
+            /** @enum {string} */
+            status: "available" | "preparing" | "shelved" | "failed" | "empty";
+            error?: string;
         };
         Preflight: {
             ready: boolean;
@@ -2087,13 +3381,43 @@ export interface components {
             }[];
             category: string;
         };
+        EvidenceManifest: {
+            /** Format: uuid */
+            run_id: string;
+            /** Format: uuid */
+            project_id: string;
+            /** Format: date-time */
+            collected_at: string;
+            missing_sources: string[];
+            limitations: string[];
+            files: {
+                path: string;
+                /** Format: uuid */
+                run_id: string;
+                kind: string;
+                title: string;
+                sha256: string;
+                bytes: number;
+            }[];
+        };
+        BusinessOutcome: {
+            /** @enum {string} */
+            state: "not_assessed" | "pending" | "accepted" | "needs_attention" | "continued";
+            nodes: {
+                node_id: string;
+                /** @enum {string} */
+                state: "not_assessed" | "accepted" | "needs_attention";
+                summary?: string;
+            }[];
+        };
         RunSummary: {
+            outcome?: components["schemas"]["BusinessOutcome"];
             /** @description 从任务输入提取的简短标题；过期后不再返回。 */
             title?: string;
             /** Format: uuid */
             id: string;
             /** @enum {string} */
-            status: "queued" | "running" | "cancelling" | "succeeded" | "failed" | "cancelled" | "skipped" | "unknown";
+            status: "queued" | "waiting_approval" | "revising_plan" | "running" | "cancelling" | "succeeded" | "failed" | "cancelled" | "skipped" | "unknown";
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -2112,8 +3436,19 @@ export interface components {
             truncated: boolean;
         };
         NodeRun: components["schemas"]["RunSummary"] & {
+            loop_id?: string;
+            /** @description 业务修复轮次，与模型重试和执行尝试分别记录 */
+            loop_round?: number;
             /** Format: uuid */
             reused_from?: string;
+            review_round?: number;
+            /** @description 当前节点执行所在的模型重试序号，首次执行为 0；普通节点尝试另计。 */
+            model_retry?: number;
+            /**
+             * Format: date-time
+             * @description 最近一次临时模型故障的最早重试时间。仅活动运行中等待重试的节点返回，取消或终止后清除。
+             */
+            next_retry_at?: string;
             node_id: string;
             /** Format: uuid */
             task_id: string;
@@ -2135,6 +3470,7 @@ export interface components {
             truncated: boolean;
         };
         RunDetails: components["schemas"]["RunSummary"] & {
+            successor?: components["schemas"]["Submission"];
             fork?: components["schemas"]["Fork"];
             nodes: components["schemas"]["NodeRun"][];
             events: components["schemas"]["RunEvent"][];
@@ -2183,6 +3519,7 @@ export interface components {
             layers: string[][];
         };
         Workflow: {
+            loops?: components["schemas"]["Loop"][];
             budget?: components["schemas"]["Budget"];
             /**
              * Format: uuid
@@ -2195,6 +3532,27 @@ export interface components {
             version_id?: string;
             input_schema?: components["schemas"]["Shape"];
         };
+        /** @description 平台控制的循环块，块内无环、不重叠、不嵌套；质量门全部通过后才离开，不设轮数上限。 */
+        Loop: {
+            id: string;
+            nodes: string[];
+            /** @description 依次执行的只读质量门，输出必填 passed 布尔值与 summary 文本 */
+            gates: string[];
+        };
+        Iteration: {
+            id: string;
+            round: number;
+            gate?: boolean;
+            feedback?: {
+                round: number;
+                node_id: string;
+                node_run_id: string;
+                summary: string;
+                report_ids?: string[];
+            };
+        };
+        /** @enum {string} */
+        ReasoningEffort: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
         Node: {
             handoff?: components["schemas"]["HandoffContract"];
             when?: components["schemas"]["Condition"];
@@ -2208,12 +3566,16 @@ export interface components {
             description?: string;
             /** @description 无模型连接的 Eino 必填；有连接时须与连接模型一致，Codex 账号连接可留空使用默认模型。 */
             model?: string;
+            reasoning_effort?: components["schemas"]["ReasoningEffort"];
+            /** @description Codex Fast 模式；省略沿用运行环境，false 显式使用普通档位。自定义运行选项必须选择具体模型。 */
+            fast?: boolean;
             depends_on?: string[];
             /** Format: uuid */
             agent_version?: string;
             /** Format: uuid */
             connection_version?: string;
             output_schema?: components["schemas"]["Shape"];
+            report_schema?: components["schemas"]["Shape"];
             bindings?: {
                 [key: string]: components["schemas"]["FieldBinding"];
             };
@@ -2285,6 +3647,7 @@ export interface components {
             /** @description 仅可收紧为只读，不能解除助手已有的只读权限 */
             read_only?: boolean;
             output_schema?: components["schemas"]["Shape"];
+            report_schema?: components["schemas"]["Shape"];
             when?: components["schemas"]["Condition"];
             approval?: components["schemas"]["ApprovalPolicy"];
             id: string;
@@ -2294,6 +3657,24 @@ export interface components {
             bindings?: {
                 [key: string]: components["schemas"]["FieldBinding"];
             };
+        };
+        ExecutionPlanPreview: {
+            /** Format: uuid */
+            base_version: string;
+            /** Format: uuid */
+            object_id: string;
+            revision: number;
+            flow: components["schemas"]["Flow"];
+            workflow: components["schemas"]["Workflow"];
+            changes: {
+                node_id: string;
+                before?: components["schemas"]["FlowBinding"];
+                after?: components["schemas"]["FlowBinding"];
+            }[];
+            assignments: {
+                task_id: string;
+                node_id: string;
+            }[];
         };
         /** @description 仅用于画布展示，与草稿及发布版本一起保存，执行编译忽略。 */
         FlowEditor: {
@@ -2312,6 +3693,7 @@ export interface components {
             };
         };
         Flow: {
+            loops?: components["schemas"]["Loop"][];
             editor?: components["schemas"]["FlowEditor"];
             budget?: components["schemas"]["Budget"];
             parameters?: components["schemas"]["Shape"];
@@ -2339,6 +3721,11 @@ export interface components {
             archived: boolean;
             /** Format: date-time */
             created_at: string;
+            /**
+             * Format: date-time
+             * @description 最近保存、首次发布该修订或归档状态变更的时间。
+             */
+            updated_at: string;
         };
         CatalogVersion: {
             /** Format: uuid */
@@ -2549,6 +3936,11 @@ export interface components {
         };
     };
     parameters: {
+        ExperienceCSRF: string;
+        ExperienceVersionID: string;
+        EvolutionIntentID: string;
+        ExperienceCursor: string;
+        ExperienceLimit: number;
         IdempotencyKey: string;
         ID: string;
     };
@@ -2565,6 +3957,946 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getExperiencePolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 默认关闭或当前项目策略 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperiencePolicy"];
+                };
+            };
+            403: components["responses"]["Error"];
+        };
+    };
+    saveExperiencePolicy: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["ExperienceCSRF"];
+            };
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExperiencePolicyUpdate"];
+            };
+        };
+        responses: {
+            /** @description 原库 CAS 保存后的新修订 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperiencePolicy"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    getExperienceCapabilities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 实时权限及已接通能力；缺省项不得视为授权 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperienceCapabilities"];
+                };
+            };
+            403: components["responses"]["Error"];
+        };
+    };
+    listExperiences: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["ExperienceCursor"];
+                limit?: components["parameters"]["ExperienceLimit"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 同事务重新检查来源授权后的元数据页 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperiencePage"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            410: components["responses"]["Error"];
+        };
+    };
+    getExperience: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+                version: components["parameters"]["ExperienceVersionID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 读取原证据重新授权后的经验；非保护或保留集内容 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperienceVersion"];
+                };
+            };
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            410: components["responses"]["Error"];
+        };
+    };
+    deleteExperience: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["ExperienceCSRF"];
+            };
+            path: {
+                id: components["parameters"]["ID"];
+                version: components["parameters"]["ExperienceVersionID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExperienceReason"];
+            };
+        };
+        responses: {
+            /** @description 已撤销并清正文 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    listExperienceUsages: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["ExperienceCursor"];
+                limit?: components["parameters"]["ExperienceLimit"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+                version: components["parameters"]["ExperienceVersionID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 使用关系摘要；检索或引用不等于成功归因，不返回检索文本及原始注入 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperienceUsagePage"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    revokeExperience: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["ExperienceCSRF"];
+            };
+            path: {
+                id: components["parameters"]["ID"];
+                version: components["parameters"]["ExperienceVersionID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExperienceReason"];
+            };
+        };
+        responses: {
+            /** @description 已幂等撤销；旧来源与传递成果不得继续复用 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    verifyExperienceClaim: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["ExperienceCSRF"];
+            };
+            path: {
+                id: components["parameters"]["ID"];
+                version: components["parameters"]["ExperienceVersionID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExperienceClaimRequest"];
+            };
+        };
+        responses: {
+            /** @description 经真实检查激活为 shadow */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperienceVersion"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            410: components["responses"]["Error"];
+        };
+    };
+    changeExperienceDelivery: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["ExperienceCSRF"];
+            };
+            path: {
+                id: components["parameters"]["ID"];
+                version: components["parameters"]["ExperienceVersionID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExperienceDeliveryRequest"];
+            };
+        };
+        responses: {
+            /** @description 服务端独立收益核验后的投放状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperienceVersion"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    grantExperienceSource: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["ExperienceCSRF"];
+            };
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExperienceSourceGrant"];
+            };
+        };
+        responses: {
+            /** @description 针对原始真实证据的有限保留授权；已曝光历史不可洗白为隐藏集 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    withdrawExperienceSource: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["ExperienceCSRF"];
+            };
+            path: {
+                id: components["parameters"]["ID"];
+                source: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 撤销来源保留授权，不抹除已曝光历史 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+        };
+    };
+    listExperienceCheckers: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["ExperienceCursor"];
+                limit?: components["parameters"]["ExperienceLimit"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 检查器元数据，不返回 expected 或可作答案探测的内容哈希 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperienceCheckerPage"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+        };
+    };
+    registerExperienceChecker: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["ExperienceCSRF"];
+            };
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExperienceCheckerRegistration"];
+            };
+        };
+        responses: {
+            /** @description 预注册窄范围事实检查器，不可用于已有候选的事后验收 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperienceChecker"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+        };
+    };
+    listEvolutionIntents: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["ExperienceCursor"];
+                limit?: components["parameters"]["ExperienceLimit"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 管理员只读历史；策略停用或未接执行器不隐藏历史 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolutionIntentPage"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+        };
+    };
+    startEvolutionCandidate: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["ExperienceCursor"];
+                limit?: components["parameters"]["ExperienceLimit"];
+            };
+            header: {
+                "X-CSRF-Token": components["parameters"]["ExperienceCSRF"];
+            };
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvolutionCandidateRequest"];
+            };
+        };
+        responses: {
+            /** @description 持久接收独立实验 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolutionIntentSummary"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    getEvolutionIntent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+                intent: components["parameters"]["EvolutionIntentID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 安全的代际与发布状态；不暴露隐藏套件、机器结果或逐例反馈 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolutionIntentSummary"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    decideEvolutionIntent: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["ExperienceCSRF"];
+            };
+            path: {
+                id: components["parameters"]["ID"];
+                intent: components["parameters"]["EvolutionIntentID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvolutionGeneration"];
+            };
+        };
+        responses: {
+            /** @description 重读真实机器证据后的最小判定摘要，无逐例反馈或区间 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolutionDecision"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    promoteEvolutionIntent: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["ExperienceCSRF"];
+            };
+            path: {
+                id: components["parameters"]["ID"];
+                intent: components["parameters"]["EvolutionIntentID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvolutionGeneration"];
+            };
+        };
+        responses: {
+            /** @description 持久发布状态，不代表入口已完成远端切换 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolutionIntentSummary"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    observeEvolutionIntent: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["ExperienceCSRF"];
+            };
+            path: {
+                id: components["parameters"]["ID"];
+                intent: components["parameters"]["EvolutionIntentID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvolutionObservationRequest"];
+            };
+        };
+        responses: {
+            /** @description 从实际业务运行重读的观察状态，不接收分数或通过标志 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolutionIntentSummary"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    runExperienceLineage: {
+        parameters: {
+            query?: {
+                usage_cursor?: string;
+                artifact_cursor?: string;
+                limit?: components["parameters"]["ExperienceLimit"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 由真实运行与请求绑定推导的经验水位及分页依赖摘要；旧任务缺水位标记 unproven */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunExperienceLineage"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            502: components["responses"]["Error"];
+        };
+    };
+    observeExperienceMemory: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["ExperienceCSRF"];
+            };
+            path: {
+                id: components["parameters"]["ID"];
+                version: components["parameters"]["ExperienceVersionID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExperienceObservationRequest"];
+            };
+        };
+        responses: {
+            /** @description 原始业务反馈和真实投放使用记录派生的观察；不接受调用方结果 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperienceObservation"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    experienceArtifactSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+                artifact: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 显式展开同项目父依赖；不返回成果正文；来源受限返回 redacted 摘要 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperienceArtifactSummary"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            502: components["responses"]["Error"];
+        };
+    };
+    listApprovalRebuildIntents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 失效代际和独立后继请求，不恢复旧审批 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalRebuildIntent"][];
+                };
+            };
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    rebuildInvalidatedRun: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["ExperienceCSRF"];
+            };
+            path: {
+                id: components["parameters"]["ID"];
+                intent: components["parameters"]["EvolutionIntentID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description 原创建人获准的幂等后继请求 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Submission"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    rollbackEvolutionIntent: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["ExperienceCSRF"];
+            };
+            path: {
+                id: components["parameters"]["ID"];
+                intent: components["parameters"]["EvolutionIntentID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvolutionRollback"];
+            };
+        };
+        responses: {
+            /** @description 已接收回退意图；不代表远端已完成，不撤销既有外部副作用 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolutionIntentSummary"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    listEvolutionEnvironments: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["ExperienceCursor"];
+                limit?: components["parameters"]["ExperienceLimit"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 项目内最新环境修订，含停用环境 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolutionEnvironmentPage"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+        };
+    };
+    registerEvolutionEnvironment: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["ExperienceCSRF"];
+            };
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvolutionEnvironmentUpdate"];
+            };
+        };
+        responses: {
+            /** @description CAS 注册真实无工具受控环境；哈希与源基线由服务端计算 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolutionEnvironment"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    submitWorkbenchEntry: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["ExperienceCSRF"];
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: components["parameters"]["ID"];
+                /** @description 工作台入口裸ID，服务端固定workbench种类 */
+                entry: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkbenchEntrySubmission"];
+            };
+        };
+        responses: {
+            /** @description 真实入口绑定已核验并产生持久业务请求；pending不代表执行完成 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Submission"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    projectRunnableChoices: {
+        parameters: {
+            query?: {
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 共享手工发布及本项目稳定自动版本；不返回 observing 或墓碑 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunnableChoicePage"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+        };
+    };
+    projectCatalogVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+                version: components["parameters"]["ExperienceVersionID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 重新检查项目范围和版本可用性 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogVersion"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    projectCatalogVersions: {
+        parameters: {
+            query?: {
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+                object: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 项目可用版本，每页100条，按版本号倒序 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogVersion"][];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
     listFactorySessions: {
         parameters: {
             query: {
@@ -2728,7 +5060,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 基于成功串行 Codex 前缀的独立返工运行 */
+            /** @description 基于成功文件检查点的独立返工运行，保留相同的串行成功前缀及研究报告 */
             202: {
                 headers: {
                     [name: string]: unknown;
@@ -2972,6 +5304,38 @@ export interface operations {
             409: components["responses"]["Error"];
             413: components["responses"]["Error"];
             503: components["responses"]["Error"];
+        };
+    };
+    runEvidence: {
+        parameters: {
+            query?: {
+                /** @description 索引中的精确文件路径，省略则返回索引。 */
+                path?: string;
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 当前原始来源生成的证据索引或指定正文，保持来源运行与覆盖限制。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceManifest"];
+                    "text/plain": string;
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            410: components["responses"]["Error"];
+            502: components["responses"]["Error"];
         };
     };
     runUsage: {
@@ -3222,7 +5586,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 运行中的节点审批，最多 32 项；正文随运行清理 */
+            /** @description 运行中的所有审批轮次；正文随运行清理 */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -3231,6 +5595,64 @@ export interface operations {
                     "application/json": components["schemas"]["ApprovalGate"][];
                 };
             };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            502: components["responses"]["Error"];
+        };
+    };
+    browseApprovals: {
+        parameters: {
+            query: {
+                project_id: string;
+                run_id?: string;
+                node_id?: string;
+                status?: "waiting" | "changes_requested" | "approved" | "rejected" | "revoked" | "consumed" | "expired";
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 项目内最新审核轮次；指定运行后可查询历史轮次 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalPage"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            502: components["responses"]["Error"];
+        };
+    };
+    getApproval: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 冻结审核项和当前运行状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalDetails"];
+                };
+            };
+            400: components["responses"]["Error"];
             401: components["responses"]["Error"];
             403: components["responses"]["Error"];
             404: components["responses"]["Error"];
@@ -3254,13 +5676,48 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 决策已持久化，事件交接会重试；执行前重新检查权限、有效期与 Git 检查点 */
+            /** @description 决策已持久化；纠偏后修订并复审，批准后重新检查权限、完整报告与 Git 检查点 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["ApprovalGate"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            410: components["responses"]["Error"];
+            502: components["responses"]["Error"];
+        };
+    };
+    prepareEvidenceRepair: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceRepairInput"];
+            };
+        };
+        responses: {
+            /** @description 待用户确认的修正续跑方案 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceRepair"];
                 };
             };
             400: components["responses"]["Error"];
@@ -3637,6 +6094,118 @@ export interface operations {
             502: components["responses"]["Error"];
         };
     };
+    bindPerforceDirectory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Worker 上已有 P4 Client 的 Root 或 AltRoot 绝对路径 */
+                    source: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 已核对本地目录并绑定，后续运行直接在此执行 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Project"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            502: components["responses"]["Error"];
+        };
+    };
+    checkProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectRegistration"];
+            };
+        };
+        responses: {
+            /** @description 绑定 Worker 只读检查 Perforce 登录、映射和已提交范围 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Preflight"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            502: components["responses"]["Error"];
+        };
+    };
+    perforceDelivery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Perforce 基线和待审核交付；非 Perforce 运行返回 null */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PerforceDelivery"] | null;
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            502: components["responses"]["Error"];
+        };
+    };
+    deliverPerforce: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 后台在绑定 Worker 生成或重试同一待审核 changelist，并 shelve；通过 GET 查询进度，不提交 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PerforceDelivery"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            502: components["responses"]["Error"];
+        };
+    };
     listProjects: {
         parameters: {
             query?: never;
@@ -3783,7 +6352,7 @@ export interface operations {
             query?: {
                 offset?: number;
                 limit?: number;
-                status?: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "cancelling";
+                status?: "queued" | "waiting_approval" | "revising_plan" | "running" | "succeeded" | "failed" | "cancelled" | "cancelling";
                 since?: string;
                 until?: string;
                 /** @description 按项目筛选，同时检查当前身份授权。 */
@@ -4344,6 +6913,8 @@ export interface operations {
             query?: {
                 kind?: string;
                 offset?: number;
+                /** @description 按归档状态筛选；省略时返回全部，筛选在分页前生效。按最近更新时间倒序排列。 */
+                archived?: boolean;
             };
             header?: never;
             path?: never;
@@ -5221,7 +7792,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 一次性状态和 PKCE 校验后设置会话，跳转站点首页 */
+            /** @description 校验一次性浏览器状态并通过飞书服务端授权确认身份后，签发绑定个人身份的 Pangu 登录 token；HttpOnly Cookie 与服务端会话固定 30 天过期，访问不续期，跳转站点首页 */
             303: {
                 headers: {
                     [name: string]: unknown;
@@ -5443,6 +8014,8 @@ export interface operations {
                 before?: number;
                 limit?: number;
                 node?: string;
+                /** @description 仅查询此节点执行的日志，隔离不同循环轮次 */
+                node_run_id?: string;
                 kind?: "node" | "model" | "tool";
                 status?: "running" | "succeeded" | "failed" | "cancelled";
             };
@@ -5477,6 +8050,8 @@ export interface operations {
                 before?: number;
                 limit?: number;
                 node?: string;
+                /** @description 仅查询此节点执行的日志，隔离不同循环轮次 */
+                node_run_id?: string;
                 kind?: "node" | "model" | "tool";
                 status?: "running" | "succeeded" | "failed" | "cancelled";
             };

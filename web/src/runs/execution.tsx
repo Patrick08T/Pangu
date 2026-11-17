@@ -2,6 +2,15 @@ import { useState } from 'react';
 import { useQuery } from '../api/hooks';
 import { Pager,QueryState,Status,timestamp,type Schema } from '../console/components';
 
+export function ModelRetries({nodes}:{nodes:Schema['NodeRun'][]}) {
+  const waiting=nodes.filter(node=>node.next_retry_at);
+  if(!waiting.length)return null;
+  return <section className="notice" aria-label="模型自动重试" role="status"><strong>模型暂时不可用，工作流正在等待自动重试。</strong>
+    {waiting.map(node=><p key={node.id}>{node.node_id}：等待第 {(node.model_retry??0)+1} 次模型重试{node.review_round?` · 第 ${node.review_round} 轮计划修订`:''}；下次重试不早于 {timestamp(node.next_retry_at)}。</p>)}
+    <p>已完成节点和人工纠偏已保留。重试按 30 秒、1 分钟、2 分钟、4 分钟递增，之后每 5 分钟继续；可随时请求取消，已设调用预算仍生效。</p>
+  </section>;
+}
+
 export function Attempts({run}:{run:string}) {
   const [offset,setOffset]=useState(0),[selected,select]=useState<Schema['Attempt']>();
   const query=useQuery<Schema['AttemptPage']>(`/runs/${run}/attempts?offset=${offset}&limit=20`,5000);

@@ -42,7 +42,7 @@ func TestGithubWebhookIsAtomicIdempotentAndRevocable(t *testing.T) {
 	if _, err = conn.Exec(ctx, "UPDATE pangu.memberships SET role='manager' WHERE project_id=$1", project); err != nil {
 		t.Fatal(err)
 	}
-	object, err := catalog.Create(ctx, ns, catalog.NewObject{Kind: "agent", Name: "任务执行", Spec: catalog.Spec{Agent: &workflow.Node{ID: "code", Executor: "codex", Handoff: testHandoff(), Instruction: "按任务范围执行", Approval: &workflow.Approval{TimeoutSeconds: 60}}}})
+	object, err := catalog.Create(ctx, ns, catalog.NewObject{Kind: "agent", Name: "任务执行", Spec: catalog.Spec{Agent: &workflow.Node{ID: "code", Executor: "codex", Handoff: testHandoff(), Instruction: "按任务范围执行", Approval: &workflow.Approval{}}}})
 	if err != nil {
 		t.Fatal(err)
 	}

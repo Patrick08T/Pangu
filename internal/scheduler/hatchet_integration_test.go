@@ -182,13 +182,24 @@ func TestHatchetNodeRetry(t *testing.T) {
 	if m.count("source") != 1 || m.count("flaky") != 2 || m.count("final") != 1 {
 		t.Fatalf("calls=%v", m.calls)
 	}
-	if len(out.Nodes) != 3 {
-		t.Fatalf("expected 3 independent child runs, got %d", len(out.Nodes))
+	if len(out.Nodes) != 4 {
+		t.Fatalf("expected 3 completed children plus the failed model attempt, got %d", len(out.Nodes))
 	}
+	failed := 0
 	for _, node := range out.Nodes {
+		if node.NodeID == "flaky" && node.Status == "failed" && node.Error != nil && node.Error.Category == "model_unavailable" {
+			failed++
+			continue
+		}
 		if node.Status != "succeeded" {
 			t.Fatalf("node did not complete: %+v", node)
 		}
+		if node.NodeID == "flaky" && node.ModelRetry != 1 {
+			t.Fatal("重试序号丢失")
+		}
+	}
+	if failed != 1 {
+		t.Fatal("模型失败历史丢失")
 	}
 	t.Logf("真实 Hatchet 节点重试通过，运行 ID=%s", accepted.RunID)
 }

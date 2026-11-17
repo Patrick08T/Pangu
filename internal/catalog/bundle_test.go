@@ -71,7 +71,7 @@ func TestBundleValidationAndFailureLeaveNoPartialObjects(t *testing.T) {
 	if err := CheckBundle(ctx, ns, bundle); err != nil {
 		t.Fatal(err)
 	}
-	items, err := List(ctx, ns, "", 0)
+	items, err := List(ctx, ns, "", 0, nil)
 	if err != nil || len(items) != 0 {
 		t.Fatal("预览校验创建了资源", err)
 	}
@@ -79,7 +79,7 @@ func TestBundleValidationAndFailureLeaveNoPartialObjects(t *testing.T) {
 	if err := CheckBundle(ctx, ns, bundle); err == nil {
 		t.Fatal("循环依赖被接受")
 	}
-	items, _ = List(ctx, ns, "", 0)
+	items, _ = List(ctx, ns, "", 0, nil)
 	if len(items) != 0 {
 		t.Fatal("失败留下部分对象")
 	}

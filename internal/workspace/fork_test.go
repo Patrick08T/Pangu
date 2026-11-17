@@ -22,7 +22,7 @@ func TestForkClonesSuccessfulCheckpointAndKeepsOriginalUntouched(t *testing.T) {
 		t.Fatal(err)
 	}
 	source, _ := sourceRepository(t)
-	project, err := Register(ctx, "fork-test", Project{Name: "返工", Source: source, Branch: "main", WorkerID: "fork-test"})
+	project, err := Register(ctx, "fork-test", Project{VCS: "git", Name: "返工", Source: source, Branch: "main", WorkerID: "fork-test"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -26,10 +26,11 @@ type Call struct {
 }
 
 type Report struct {
-	Budget     *workflow.Budget `json:"budget"`
-	Used       workflow.Budget  `json:"used"`
-	Calls      []Call           `json:"calls"`
-	NextOffset *int             `json:"next_offset,omitempty"`
+	BudgetSources []string         `json:"budget_sources,omitempty"`
+	Budget        *workflow.Budget `json:"budget"`
+	Used          workflow.Budget  `json:"used"`
+	Calls         []Call           `json:"calls"`
+	NextOffset    *int             `json:"next_offset,omitempty"`
 }
 
 func ForRun(ctx context.Context, run string, offset ...int) (*Report, error) {
@@ -48,7 +49,14 @@ func ForRun(ctx context.Context, run string, offset ...int) (*Report, error) {
 		return nil, err
 	}
 	out.Budget = d.Budget
-	err = conn.QueryRow(ctx, `SELECT count(*) FILTER(WHERE kind='model'),count(*) FILTER(WHERE kind='search'),count(*) FILTER(WHERE kind='codex') FROM pangu.usage_calls WHERE run_id=$1`, run).Scan(&out.Used.ModelCalls, &out.Used.SearchCalls, &out.Used.CodexSessions)
+	runs, err := budgetRuns(ctx, conn, run)
+	if err != nil {
+		return nil, err
+	}
+	if len(runs) > 1 {
+		out.BudgetSources = runs[:len(runs)-1]
+	}
+	err = conn.QueryRow(ctx, `SELECT count(*) FILTER(WHERE kind='model'),count(*) FILTER(WHERE kind='search'),count(*) FILTER(WHERE kind='codex') FROM pangu.usage_calls WHERE run_id=ANY($1::uuid[])`, runs).Scan(&out.Used.ModelCalls, &out.Used.SearchCalls, &out.Used.CodexSessions)
 	if err != nil {
 		return nil, err
 	}
@@ -88,6 +96,13 @@ func Maintain(ctx context.Context) error {
 		return err
 	}
 	defer conn.Close(context.Background())
-	_, err = conn.Exec(ctx, `DELETE FROM pangu.usage_calls u WHERE u.created_at<now()-interval '90 days' AND NOT EXISTS(SELECT 1 FROM pangu.node_attempts a WHERE a.run_id=u.run_id AND a.status='running')`)
+	// 待审批/待补证可以无限暂停；来源记录须保留到整条接续链均已清理。
+	_, err = conn.Exec(ctx, `WITH RECURSIVE protected(id,run_id) AS (
+ SELECT id,run_id FROM pangu.submissions WHERE purged_at IS NULL
+ UNION SELECT p.id,p.run_id FROM protected child JOIN pangu.plan_continuations c ON c.request_id=child.id
+ JOIN pangu.approvals a ON a.id=c.approval_id JOIN pangu.submissions p ON p.run_id=a.run_id
+ ) DELETE FROM pangu.usage_calls u WHERE u.created_at<now()-interval '90 days'
+ AND NOT EXISTS(SELECT 1 FROM protected p WHERE p.run_id=u.run_id)
+ AND NOT EXISTS(SELECT 1 FROM pangu.node_attempts a WHERE a.run_id=u.run_id AND a.status='running')`)
 	return err
 }

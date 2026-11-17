@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -143,8 +144,33 @@ func (s *Shape) Validate(value any) error {
 }
 
 func ValidateOutput(node Node, output *NodeOutput) error {
-	if output.Text == "" || len(output.Text) > 16384 {
-		return fmt.Errorf("节点 %s 输出为空或超过 16 KiB", node.ID)
+	if len(output.Blockers) > 0 {
+		if !node.ReadOnly || node.ReportSchema == nil {
+			return fmt.Errorf("仅只读报告节点可进入补证等待")
+		}
+		if err := ValidateEvidenceBlockers(output.Blockers); err != nil {
+			return err
+		}
+	}
+	if node.ReportSchema != nil {
+		hash, err := hex.DecodeString(output.ReportSHA256)
+		if err != nil || len(hash) != 32 || len(output.ReportIDs) != 1 {
+			return fmt.Errorf("节点 %s 缺少完整报告引用或内容摘要", node.ID)
+		}
+	}
+	if output.Text == "" {
+		return fmt.Errorf("节点 %s 输出为空", node.ID)
+	}
+	final := *output
+	if final.RunID == "" {
+		final.RunID = "00000000-0000-0000-0000-000000000000"
+	}
+	data, err := json.Marshal(final)
+	if err != nil {
+		return fmt.Errorf("节点 %s 输出序列化失败: %w", node.ID, err)
+	}
+	if len(output.Text) > 16384 || len(data) > 16384 {
+		return fmt.Errorf("节点 %s 输出超限：正文=%d 字节，序列化=%d 字节，上限=16384 字节", node.ID, len(output.Text), len(data))
 	}
 	if node.OutputSchema != nil {
 		value, err := jsonschema.UnmarshalJSON(bytes.NewBufferString(output.Text))
@@ -154,15 +180,6 @@ func ValidateOutput(node Node, output *NodeOutput) error {
 		if err := node.OutputSchema.Validate(value); err != nil {
 			return fmt.Errorf("节点 %s 输出结构错误: %w", node.ID, err)
 		}
-		output.Data, _ = value.(map[string]any)
-	}
-	final := *output
-	if final.RunID == "" {
-		final.RunID = "00000000-0000-0000-0000-000000000000"
-	}
-	data, err := json.Marshal(final)
-	if err != nil || len(data) > 16384 {
-		return fmt.Errorf("节点 %s 序列化输出超过 16 KiB", node.ID)
 	}
 	return nil
 }
@@ -200,7 +217,11 @@ func (d Definition) BindInput(input NodeInput) (NodeInput, error) {
 			if !exists {
 				return input, fmt.Errorf("参数 %s 的直接上游不存在", name)
 			}
-			source = parent.Data
+			var err error
+			source, err = jsonschema.UnmarshalJSON(bytes.NewBufferString(parent.Text))
+			if err != nil {
+				return input, fmt.Errorf("参数 %s 的直接上游 %s 输出必须为 JSON: %w", name, binding.From, err)
+			}
 		}
 		value, err := selectField(source, binding.Pointer)
 		if err != nil || !fieldType(binding.Type, value) {

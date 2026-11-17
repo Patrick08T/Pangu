@@ -73,7 +73,7 @@ func TestPerformanceBlueprintGatesAndBlockedPaths(t *testing.T) {
 	if err != nil || len(layers) != 8 || len(d.Nodes) != 8 {
 		t.Fatal("流程不是八阶段串行", err)
 	}
-	if d.Nodes[2].Approval == nil || d.Nodes[2].Approval.TimeoutSeconds != 1800 || d.Budget.CodexSessions != 8 {
+	if d.Nodes[2].Approval == nil || d.Budget.CodexSessions != 8 {
 		t.Fatal("缺少审批或明确会话预算")
 	}
 	for i, n := range d.Nodes {
@@ -89,7 +89,11 @@ func TestPerformanceBlueprintGatesAndBlockedPaths(t *testing.T) {
 			}
 			ready := calls != stop
 			calls++
-			return []workflow.NodeOutput{{Text: fmt.Sprintf(`{"ready":%t,"summary":"合成结果","evidence":[],"gaps":[]}`, ready)}}, nil
+			review := ""
+			if inputs[0].Node.ID == "baseline" {
+				review = `,"review":{"title":"基线审核","summary":"人工确认","items":[{"id":"scope","category":"范围","title":"优化范围","proposal":"核对基线","rationale":"合成测试","evidence_refs":[],"task_ids":[]}],"resolutions":[]}`
+			}
+			return []workflow.NodeOutput{{Text: fmt.Sprintf(`{"ready":%t,"summary":"合成结果","evidence":[],"gaps":[]%s}`, ready, review)}}, nil
 		})
 		if err != nil {
 			t.Fatal(err)

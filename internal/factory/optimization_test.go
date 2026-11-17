@@ -17,7 +17,10 @@ func TestOptimizationCannotRemoveApprovalOrItsDependencies(t *testing.T) {
 	}
 	reply = *parsed
 	b := *reply.Proposal
-	b.Steps = []catalog.BundleStep{{ID: "gate", Agent: "writer", Approval: &workflow.Approval{TimeoutSeconds: 60}}, {ID: "write", Agent: "writer", DependsOn: []string{"gate"}}}
+	planner := *b.Agents[0].Node
+	planner.ReadOnly = true
+	b.Agents = append(b.Agents, catalog.AgentChange{Key: "planner", Name: "规划", Node: &planner})
+	b.Steps = []catalog.BundleStep{{ID: "plan", Agent: "planner"}, {ID: "gate", Agent: "writer", DependsOn: []string{"plan"}, Approval: &workflow.Approval{SourceNode: "plan", RevisionNodes: []string{"plan"}}}, {ID: "write", Agent: "writer", DependsOn: []string{"gate"}}}
 	conn, err := database.Open(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -40,11 +43,11 @@ func TestOptimizationCannotRemoveApprovalOrItsDependencies(t *testing.T) {
 	if err = checkOptimization(ctx, ns, in, &b); err != nil {
 		t.Fatal(err)
 	}
-	b.Steps[1].DependsOn = nil
+	b.Steps[2].DependsOn = nil
 	if checkOptimization(ctx, ns, in, &b) == nil {
 		t.Fatal("允许断开审批依赖")
 	}
-	b.Steps = b.Steps[1:]
+	b.Steps = append(b.Steps[:1], b.Steps[2:]...)
 	if checkOptimization(ctx, ns, in, &b) == nil {
 		t.Fatal("允许删除审批节点")
 	}
