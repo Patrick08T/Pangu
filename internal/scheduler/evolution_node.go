@@ -46,7 +46,7 @@ func evolutionExecuteNode(ctx context.Context, s evolution.Scope, p evolution.Ex
 	if err = execution.Begin(ctx, &attempt); err != nil {
 		return out, err
 	}
-	out, err = agent.Execute(usage.WithRun(ctx, run, input.Node.ID, nodeRun, attempt.Attempt), input)
+	out, err = evolutionAgent(usage.WithRun(ctx, run, input.Node.ID, nodeRun, attempt.Attempt), s, p, input)
 	out.RunID = nodeRun
 	attempt.Status = "succeeded"
 	status := "completed"
@@ -64,6 +64,20 @@ func evolutionExecuteNode(ctx context.Context, s evolution.Scope, p evolution.Ex
 		return e
 	})
 	return out, errors.Join(err, saveErr)
+}
+
+func evolutionAgent(ctx context.Context, s evolution.Scope, p evolution.ExecutionPlan, input workflow.NodeInput) (workflow.NodeOutput, error) {
+	if p.Environment.Backend != evolution.ResearchReplayBackend {
+		return agent.Execute(ctx, input)
+	}
+	return agent.ExecuteResearchReplay(ctx, input, func(ctx context.Context) error {
+		return evolutionTransaction(ctx, func(tx pgx.Tx) error {
+			if err := evolutionFence(ctx, tx, s, p); err != nil {
+				return err
+			}
+			return evolutionBudgetTx(ctx, tx, input.RunID, p.MaxCalls, p.MaxTokens)
+		})
+	})
 }
 
 func evolutionBeginNode(ctx context.Context, tx pgx.Tx, p evolution.ExecutionPlan, input workflow.NodeInput) (workflow.NodeOutput, bool, error) {

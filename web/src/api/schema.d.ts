@@ -2549,7 +2549,7 @@ export interface components {
             /** Format: int64 */
             revision: number;
             /** @enum {string} */
-            backend: "eino_json_v1";
+            backend: "eino_json_v1" | "eino_research_replay_v1";
             /** Format: uuid */
             connection_version: string;
             enabled: boolean;
@@ -2563,7 +2563,7 @@ export interface components {
             /** Format: int64 */
             expected_revision: number;
             /** @enum {string} */
-            backend: "eino_json_v1";
+            backend: "eino_json_v1" | "eino_research_replay_v1";
             /** Format: uuid */
             connection_version: string;
             enabled: boolean;
@@ -3472,6 +3472,13 @@ export interface components {
         RunDetails: components["schemas"]["RunSummary"] & {
             successor?: components["schemas"]["Submission"];
             fork?: components["schemas"]["Fork"];
+            /** @description 已确认的业务提交来源及查询时的入口绑定状态。 */
+            entry?: {
+                key: string;
+                revision: number;
+                workflow_id: string;
+                current: boolean;
+            };
             nodes: components["schemas"]["NodeRun"][];
             events: components["schemas"]["RunEvent"][];
             attempts: components["schemas"]["Attempt"][];
@@ -3624,20 +3631,24 @@ export interface components {
             pointer: string;
             type: string;
         };
-        /** @description openai 使用服务端凭据引用；codex 使用 Worker 专用登录且模型可留空，禁止配置 API 端点、凭据引用与单价。执行时读取原始来源，不返回密钥。 */
+        /** @description openai 使用服务端凭据引用，可配置 Responses API 和推理强度；codex 使用 Worker 专用登录且模型可留空，禁止配置 API 端点、凭据引用与单价。执行时读取原始来源，不返回密钥。 */
         Connection: {
             /** @enum {string} */
             provider?: "openai" | "codex";
+            /** @enum {string} */
+            api?: "responses";
+            /** @enum {string} */
+            reasoning_effort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
             price?: components["schemas"]["Price"];
             /** Format: uri */
             base_url?: string;
             model?: string;
             secret_ref?: string;
-        } & ({
+        } & (({
             /** @enum {unknown} */
             provider?: "openai";
             model: unknown;
-        } | {
+        } & (unknown | unknown)) | {
             /** @enum {unknown} */
             provider: "codex";
         });

@@ -14,7 +14,7 @@ func controlledDefinition() workflow.Definition {
 func TestEnvironmentRejectsUncontrolledExecution(t *testing.T) {
 	d := controlledDefinition()
 	env := Environment{Backend: "eino_json_v1", Enabled: true, ConnectionVersion: d.Nodes[0].ConnectionVersion}
-	if err := validateExecution(env, d); err != nil {
+	if err := ValidateExecution(env, d); err != nil {
 		t.Fatal(err)
 	}
 	cases := map[string]func(*Environment, *workflow.Definition){
@@ -33,7 +33,7 @@ func TestEnvironmentRejectsUncontrolledExecution(t *testing.T) {
 			candidate := controlledDefinition()
 			changed := env
 			mutate(&changed, &candidate)
-			if !errors.Is(validateExecution(changed, candidate), ErrIsolation) {
+			if !errors.Is(ValidateExecution(changed, candidate), ErrIsolation) {
 				t.Fatal("未拒绝非受控执行")
 			}
 		})

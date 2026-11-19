@@ -12,16 +12,22 @@ import (
 )
 
 type tracedModel struct {
-	base model.ToolCallingChatModel
-	name string
+	base       model.ToolCallingChatModel
+	name       string
+	beforeCall func(context.Context) error
 }
 
 func (m *tracedModel) WithTools(tools []*schema.ToolInfo) (model.ToolCallingChatModel, error) {
 	base, err := m.base.WithTools(tools)
-	return &tracedModel{base: base, name: m.name}, err
+	return &tracedModel{base: base, name: m.name, beforeCall: m.beforeCall}, err
 }
 
 func (m *tracedModel) Generate(ctx context.Context, messages []*schema.Message, opts ...model.Option) (*schema.Message, error) {
+	if m.beforeCall != nil {
+		if err := m.beforeCall(ctx); err != nil {
+			return nil, err
+		}
+	}
 	roles := map[schema.RoleType]int{}
 	for _, msg := range messages {
 		if msg != nil {

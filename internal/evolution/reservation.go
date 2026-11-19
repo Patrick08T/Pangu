@@ -59,17 +59,17 @@ func (s Service) reserveCandidateTx(ctx context.Context, tx pgx.Tx, scope Scope,
 	if err != nil {
 		return nil, err
 	}
-	if err = validateExecution(*env, prepared.Baseline); err != nil {
+	if err = validateTargets(*env, prepared.Baseline, request); err != nil {
 		return nil, err
 	}
-	if err = validateExecution(*env, prepared.Candidate); err != nil {
+	if err = ValidateExecution(*env, prepared.Candidate); err != nil {
 		return nil, err
 	}
 	suite, err := evaluation.ReadExperimentSuiteTx(ctx, tx, scope.Namespace, request.SuiteID)
 	if err != nil {
 		return nil, err
 	}
-	if err = verifySuite(p, suite); err != nil {
+	if err = verifySuite(p, suite, checkerHash(env.Backend)); err != nil {
 		return nil, err
 	}
 	config, err := s.reservationConfigTx(ctx, tx, scope, request, prepared)

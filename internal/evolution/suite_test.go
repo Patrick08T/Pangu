@@ -16,7 +16,7 @@ func suitePolicyFixture() (experience.Policy, *evaluation.FrozenSuite) {
 
 func TestSuiteMustMatchFrozenPolicyAndIndependentChecker(t *testing.T) {
 	policy, suite := suitePolicyFixture()
-	if err := verifySuite(policy, suite); err != nil {
+	if err := verifySuite(policy, suite, CheckerHash()); err != nil {
 		t.Fatal(err)
 	}
 	changes := []func(*experience.Policy, *evaluation.FrozenSuite){
@@ -31,7 +31,7 @@ func TestSuiteMustMatchFrozenPolicyAndIndependentChecker(t *testing.T) {
 	for _, change := range changes {
 		p, s := suitePolicyFixture()
 		change(&p, s)
-		if verifySuite(p, s) == nil {
+		if verifySuite(p, s, CheckerHash()) == nil {
 			t.Fatal("放宽冻结套件或伪造检查器被接受")
 		}
 	}

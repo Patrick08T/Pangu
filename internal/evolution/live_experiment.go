@@ -34,28 +34,28 @@ func (s Service) liveExperimentTx(ctx context.Context, tx pgx.Tx, scope Scope, i
 	if err != nil {
 		return nil, err
 	}
-	if err = verifySuite(p, suite); err != nil {
-		return nil, err
-	}
 	env, err := environmentTx(ctx, tx, scope, intent.Config.Request.EnvironmentID)
 	if err != nil {
+		return nil, err
+	}
+	if err = verifySuite(p, suite, checkerHash(env.Backend)); err != nil {
 		return nil, err
 	}
 	memories, err := s.recheckMemoriesTx(ctx, tx, scope, intent.Config)
 	if err != nil {
 		return nil, err
 	}
-	prepared, err := liveCompileTx(ctx, tx, scope, intent, suite)
+	prepared, err := liveCompileTx(ctx, tx, scope, intent, suite, env.Backend)
 	if err != nil {
 		return nil, err
 	}
 	if err = verifyMemoryScopeTx(ctx, tx, scope, prepared, memories); err != nil {
 		return nil, err
 	}
-	if err = validateExecution(*env, prepared.Baseline); err != nil {
+	if err = validateTargets(*env, prepared.Baseline, intent.Config.Request); err != nil {
 		return nil, err
 	}
-	if err = validateExecution(*env, prepared.Candidate); err != nil {
+	if err = ValidateExecution(*env, prepared.Candidate); err != nil {
 		return nil, err
 	}
 	current, err := reservationSpec(intent.Config.Request, *env, *suite, *prepared, intent.Config)
@@ -74,14 +74,14 @@ func (s Service) liveExperimentTx(ctx context.Context, tx pgx.Tx, scope Scope, i
 	return &liveExperiment{Frozen: checked, Suite: suite, Environment: *env, Baseline: prepared.Baseline, Candidate: prepared.Candidate, Memories: memories}, nil
 }
 
-func liveCompileTx(ctx context.Context, tx pgx.Tx, scope Scope, intent *intentRecord, suite *evaluation.FrozenSuite) (*catalog.PreparedCandidate, error) {
+func liveCompileTx(ctx context.Context, tx pgx.Tx, scope Scope, intent *intentRecord, suite *evaluation.FrozenSuite, backend string) (*catalog.PreparedCandidate, error) {
 	if intent.Config.Request.Kind == "memory_benefit" {
 		return prepareRequestedCandidateTx(ctx, tx, scope, intent.Config.Request)
 	}
-	return liveRoleCompileTx(ctx, tx, scope, intent, suite)
+	return liveRoleCompileTx(ctx, tx, scope, intent, suite, backend)
 }
 
-func liveRoleCompileTx(ctx context.Context, tx pgx.Tx, scope Scope, intent *intentRecord, suite *evaluation.FrozenSuite) (*catalog.PreparedCandidate, error) {
+func liveRoleCompileTx(ctx context.Context, tx pgx.Tx, scope Scope, intent *intentRecord, suite *evaluation.FrozenSuite, backend string) (*catalog.PreparedCandidate, error) {
 	var caseID string
 	for _, c := range suite.Cases {
 		if c.Partition != "development" {
@@ -93,11 +93,18 @@ func liveRoleCompileTx(ctx context.Context, tx pgx.Tx, scope Scope, intent *inte
 	if err != nil {
 		return nil, err
 	}
-	base, identity, err := catalog.CompileExperimentTx(ctx, tx, scope.Namespace, intent.ExperimentID, "baseline", example.Input)
+	input := example.Input
+	if backend == ResearchReplayBackend {
+		input, err = replayCaseInput(example.Input, example.Expected, example.Criteria)
+		if err != nil {
+			return nil, err
+		}
+	}
+	base, identity, err := catalog.CompileExperimentTx(ctx, tx, scope.Namespace, intent.ExperimentID, "baseline", input)
 	if err != nil {
 		return nil, err
 	}
-	candidate, _, err := catalog.CompileExperimentTx(ctx, tx, scope.Namespace, intent.ExperimentID, "candidate", example.Input)
+	candidate, _, err := catalog.CompileExperimentTx(ctx, tx, scope.Namespace, intent.ExperimentID, "candidate", input)
 	if err != nil {
 		return nil, err
 	}

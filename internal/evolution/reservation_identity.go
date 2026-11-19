@@ -22,7 +22,7 @@ func reservationSpec(request CandidateRequest, env Environment, suite evaluation
 			cases++
 		}
 	}
-	if cases == 0 || request.Budget.Calls <= 0 || int64(calls) != request.Budget.Calls || request.Budget.Tokens <= 0 || calls < cases*2*suite.Rules.Repeats*len(prepared.Candidate.Nodes) {
+	if cases == 0 || request.Budget.Calls <= 0 || int64(calls) != request.Budget.Calls || request.Budget.Tokens <= 0 || calls < cases*2*suite.Rules.Repeats*minimumCaseCalls(env, len(prepared.Candidate.Nodes)) {
 		return evaluation.ExperimentSpec{}, ErrBudget
 	}
 	spec := evaluation.ExperimentSpec{ID: uuid.NewString(), Kind: "role_change", Purpose: "evaluation", LogicalProjectID: request.ProjectID, EnvironmentID: env.ID, EnvironmentHash: env.Hash, SuiteID: suite.ID, SuiteHash: suite.Hash, PolicyRevision: int(request.PolicyRevision), Generation: 1, BaselineVersion: request.BaselineVersion, CandidateHash: prepared.CandidateHash, SourceBaseline: env.SourceBaseline, ConfigHash: env.ConfigHash, Budget: evaluation.ExperimentBudget{MaxCalls: calls, MaxTokens: request.Budget.Tokens}, Baseline: evaluation.ExperimentArm{RoleHash: prepared.BaselineHash, CompiledHash: prepared.BaselineCompiledHash, MemoryHash: memoryHash}, Candidate: evaluation.ExperimentArm{RoleHash: prepared.CandidateHash, CompiledHash: prepared.CandidateCompiledHash, MemoryHash: memoryHash}}
@@ -35,6 +35,14 @@ func reservationSpec(request CandidateRequest, env Environment, suite evaluation
 		spec.Baseline.MemoryHash = evaluation.EmptyMemoryHash
 	}
 	return spec, nil
+}
+
+func minimumCaseCalls(env Environment, nodes int) int {
+	if env.Backend == ResearchReplayBackend {
+		// The model reads evidence, then uses the tool response to register a report.
+		return 2
+	}
+	return nodes
 }
 
 func insertIntentTx(ctx context.Context, tx pgx.Tx, scope Scope, p experience.Policy, intent *intentRecord) error {

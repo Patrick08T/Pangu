@@ -21,3 +21,13 @@ test('翻页查看连接时保留已有固定版本，不清空配置',async()=>
   await waitFor(()=>expect(screen.queryByRole('option',{name:/已有账号/})).toBeNull());
   expect(change).not.toHaveBeenCalled();expect((screen.getByLabelText('共享连接版本') as HTMLSelectElement).value).toBe('c1');
 });
+
+test('模型 API 可以选择 Responses 并持久化推理强度',()=>{
+  function Form(){const [value,setValue]=useState(JSON.stringify({connection:{provider:'openai',base_url:'https://api.openai.com/v1',model:'gpt-6.2-sol',secret_ref:'PANGU_SECRET_TEST'}}));return <><ConnectionFields value={value} change={setValue}/><output>{value}</output></>;}
+  render(<Form/>);
+  fireEvent.change(screen.getByLabelText('API 接口'),{target:{value:'responses'}});
+  fireEvent.change(screen.getByLabelText('推理强度'),{target:{value:'high'}});
+  expect(JSON.parse(screen.getByRole('status').textContent!).connection).toMatchObject({api:'responses',reasoning_effort:'high',model:'gpt-6.2-sol'});
+  fireEvent.change(screen.getByLabelText('API 接口'),{target:{value:''}});
+  expect(JSON.parse(screen.getByRole('status').textContent!).connection).not.toHaveProperty('reasoning_effort');
+});

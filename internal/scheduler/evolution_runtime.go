@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// RunEvolutionCase executes only a server-frozen, authorized no-tool case, never a project workspace.
+// RunEvolutionCase executes only a server-frozen case in the authorized backend.
 func RunEvolutionCase(ctx context.Context, namespace, requestID, runID string) error {
 	conn, err := database.Open(ctx)
 	if err != nil {
@@ -95,6 +95,15 @@ func evolutionBeginCase(ctx context.Context, tx pgx.Tx, s evolution.Scope, p evo
 }
 
 func evolutionRunFlow(ctx context.Context, s evolution.Scope, p evolution.ExecutionPlan, run string, service evolution.Service) (map[string]workflow.NodeOutput, error) {
+	if p.Environment.Backend == evolution.ResearchReplayBackend {
+		node, err := evolution.ReplayCollector(p.Definition)
+		if err != nil {
+			return nil, err
+		}
+		input := workflow.NodeInput{Node: node, Input: p.Definition.Input, ProjectID: p.Definition.ProjectID}
+		out, err := evolutionExecuteNode(ctx, s, p, input, run)
+		return map[string]workflow.NodeOutput{node.ID: out}, err
+	}
 	return workflow.RunAudited(p.Definition, nil, nil, nil, func(inputs []workflow.NodeInput) ([]workflow.NodeOutput, error) {
 		results := make([]workflow.NodeOutput, 0, len(inputs))
 		for _, input := range inputs {

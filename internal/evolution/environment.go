@@ -46,7 +46,7 @@ func (s Service) RegisterEnvironment(ctx context.Context, scope Scope, input Env
 }
 
 func configureEnvironment(ctx context.Context, tx pgx.Tx, scope Scope, env *Environment) error {
-	if env.Backend != "eino_json_v1" {
+	if env.Backend != "eino_json_v1" && env.Backend != ResearchReplayBackend {
 		return ErrIsolation
 	}
 	var data []byte
@@ -66,11 +66,14 @@ func configureEnvironment(ctx context.Context, tx pgx.Tx, scope Scope, env *Envi
 	}
 	env.Currency = spec.Connection.Price.Currency
 	env.SourceBaseline = hashText("pangu/eino_json_v1/no-tools/no-project-context/v1")
+	if env.Backend == ResearchReplayBackend {
+		env.SourceBaseline = hashText("pangu/eino_research_replay_v1/frozen-documents/collect-only/v1")
+	}
 	env.ConfigHash = hashJSON(struct {
 		Connection string
 		Spec       *catalog.Connection
 		Checker    string
-	}{env.ConnectionVersion, spec.Connection, CheckerHash()})
+	}{env.ConnectionVersion, spec.Connection, checkerHash(env.Backend)})
 	return nil
 }
 

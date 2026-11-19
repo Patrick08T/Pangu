@@ -33,6 +33,10 @@ func validateMachineResult(plan *ExecutionPlan, result MachineResult) error {
 			found = true
 		}
 	}
+	if plan.Environment.Backend == ResearchReplayBackend {
+		node, err := ReplayCollector(plan.Definition)
+		found = err == nil && node.ID == result.NodeID
+	}
 	if !found || !result.StopConfirmed || !slices.Contains([]string{"completed", "failed", "timeout", "infrastructure_error"}, result.Status) {
 		return ErrConflict
 	}
@@ -46,19 +50,18 @@ func validateMachineResult(plan *ExecutionPlan, result MachineResult) error {
 }
 
 func machineReceipt(plan *ExecutionPlan, actual *evaluation.Case, result MachineResult) (evaluation.ExperimentReceipt, error) {
-	receipt := evaluation.ExperimentReceipt{ExperimentID: plan.Experiment.ID, ExperimentHash: plan.Experiment.Hash, Generation: plan.Key.Generation, Arm: plan.Key.Arm, CaseID: plan.Key.CaseID, Repeat: plan.Key.Repeat, Attempt: 1, ExecutionInputHash: plan.InputHash, EnvironmentHash: plan.Environment.Hash, CompiledHash: result.CompiledHash, CheckerHash: CheckerHash(), EvidenceHash: hashJSON(result), Status: result.Status}
+	receipt := evaluation.ExperimentReceipt{ExperimentID: plan.Experiment.ID, ExperimentHash: plan.Experiment.Hash, Generation: plan.Key.Generation, Arm: plan.Key.Arm, CaseID: plan.Key.CaseID, Repeat: plan.Key.Repeat, Attempt: 1, ExecutionInputHash: plan.InputHash, EnvironmentHash: plan.Environment.Hash, CompiledHash: result.CompiledHash, CheckerHash: checkerHash(plan.Environment.Backend), EvidenceHash: hashJSON(result), Status: result.Status}
 	if result.Calls > plan.MaxCalls || result.Tokens > plan.MaxTokens {
 		receipt.Status = "failed"
 	}
 	if receipt.Status != "completed" {
 		return receipt, nil
 	}
-	pass, err := checkJSONResult(actual.Expected, actual.Criteria, result.Text)
+	pass, structure, err := machineScore(plan.Environment, actual, result.Text)
 	if err != nil {
 		return receipt, err
 	}
-	_, structureErr := strictObject(result.Text)
-	receipt.GatesPassed = structureErr == nil
+	receipt.GatesPassed = structure
 	receipt.ProtectionPassed = pass
 	acceptance := 0.0
 	if pass {
@@ -66,6 +69,15 @@ func machineReceipt(plan *ExecutionPlan, actual *evaluation.Case, result Machine
 	}
 	receipt.Metrics = map[string]float64{"acceptance": acceptance, "cost": result.Cost, "duration": result.DurationSeconds}
 	return receipt, nil
+}
+
+func machineScore(env Environment, actual *evaluation.Case, text string) (bool, bool, error) {
+	if env.Backend == ResearchReplayBackend {
+		return checkReplayResult(actual.Expected, actual.Criteria, text)
+	}
+	pass, err := checkJSONResult(actual.Expected, actual.Criteria, text)
+	_, structureErr := strictObject(text)
+	return pass, structureErr == nil, err
 }
 
 func storeMachineResultTx(ctx context.Context, tx pgx.Tx, scope Scope, plan *ExecutionPlan, result MachineResult, receipt evaluation.ExperimentReceipt) error {
