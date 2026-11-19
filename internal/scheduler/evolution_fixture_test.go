@@ -49,6 +49,15 @@ func testEvolutionText(v string) string {
 
 func newEvolutionFixture(t *testing.T, url string) evolutionFixture {
 	t.Helper()
+	f := emptyEvolutionFixture(t)
+	f.configure(t, url)
+	f.suite = f.createSuite(t)
+	f.configurePolicy(t)
+	return f
+}
+
+func emptyEvolutionFixture(t *testing.T) evolutionFixture {
+	t.Helper()
 	if os.Getenv("PANGU_TEST_DATABASE_URL") == "" {
 		t.Fatal("requires independent test database")
 	}
@@ -72,9 +81,6 @@ func newEvolutionFixture(t *testing.T, url string) evolutionFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.configure(t, url)
-	f.suite = f.createSuite(t)
-	f.configurePolicy(t)
 	return f
 }
 
@@ -108,13 +114,18 @@ func (f *evolutionFixture) configure(t *testing.T, url string) {
 }
 
 func (f *evolutionFixture) createSuite(t *testing.T) *evaluation.FrozenSuite {
+	return f.createSuiteWithCases(t, "json_equal", evolution.CheckerHash(), func(i int) (string, string) {
+		return fmt.Sprintf("private case %d", i), `{"answer":"checker-only-value"}`
+	})
+}
+
+func (f *evolutionFixture) createSuiteWithCases(t *testing.T, criterion, checker string, sample func(int) (string, string)) *evaluation.FrozenSuite {
 	t.Helper()
 	ctx := context.Background()
 	spec := evaluation.SuiteSpec{ID: uuid.NewString(), ProjectID: f.scope.ProjectID, Version: 1, Rules: evaluation.DecisionRules{Primary: "acceptance", Method: "hoeffding_bonferroni", FailurePolicy: "invalidate", Confidence: .95, MinFamilies: 1, Repeats: 1, MaxCandidates: 2, MinImprovement: .1, Metrics: []evaluation.MetricRule{{Name: "acceptance", HigherBetter: true, Lower: 0, Upper: 1}, {Name: "cost", Lower: 0, Upper: 100, Tolerance: 2}, {Name: "duration", Lower: 0, Upper: 100, Tolerance: 2}}}}
 	for i, partition := range []string{"holdout", "protection", "development"} {
-		input := fmt.Sprintf("private case %d", i)
-		expected := `{"answer":"checker-only-value"}`
-		c, err := evaluation.CreateCase(ctx, f.scope.Namespace, f.scope.ProjectID, f.scope.ActorID, evaluation.CaseInput{Name: "case", Input: input, Expected: expected, Criteria: []string{"json_equal"}, RetainInput: true})
+		input, expected := sample(i)
+		c, err := evaluation.CreateCase(ctx, f.scope.Namespace, f.scope.ProjectID, f.scope.ActorID, evaluation.CaseInput{Name: "case", Input: input, Expected: expected, Criteria: []string{criterion}, RetainInput: true})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -126,7 +137,7 @@ func (f *evolutionFixture) createSuite(t *testing.T) *evaluation.FrozenSuite {
 		if _, err = submission.Dispatch(ctx, f.scope.Namespace, s.ID, func(context.Context, *submission.Record) (string, error) { return run, nil }); err != nil {
 			t.Fatal(err)
 		}
-		spec.Cases = append(spec.Cases, evaluation.SuiteCase{ID: c.ID, FamilyID: uuid.NewString(), TaskID: s.TaskID, SourceRunID: run, InputHash: testEvolutionText(input), ExpectedHash: testEvolutionText(expected), CriteriaHash: testEvolutionHash(c.Criteria), CheckerHash: evolution.CheckerHash(), Partition: partition, Critical: partition == "protection"})
+		spec.Cases = append(spec.Cases, evaluation.SuiteCase{ID: c.ID, FamilyID: uuid.NewString(), TaskID: s.TaskID, SourceRunID: run, InputHash: testEvolutionText(input), ExpectedHash: testEvolutionText(expected), CriteriaHash: testEvolutionHash(c.Criteria), CheckerHash: checker, Partition: partition, Critical: partition == "protection"})
 	}
 	suite, err := evaluation.CreateExperimentSuite(ctx, f.scope.Namespace, spec)
 	if err != nil {

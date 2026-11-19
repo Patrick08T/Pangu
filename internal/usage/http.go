@@ -39,24 +39,42 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if err != nil {
 		return nil, transportFailure(t.Kind, err, Finish(id, nil, false))
 	}
-	var payload struct {
-		Usage *struct {
-			Input   *int64 `json:"prompt_tokens"`
-			Output  *int64 `json:"completion_tokens"`
-			Details struct {
-				Cached int64 `json:"cached_tokens"`
-			} `json:"prompt_tokens_details"`
-		} `json:"usage"`
-	}
 	var tokens *Tokens
-	if t.Kind == "model" && response.StatusCode >= 200 && response.StatusCode < 300 && json.Unmarshal(raw, &payload) == nil && payload.Usage != nil && payload.Usage.Input != nil && payload.Usage.Output != nil {
-		tokens = &Tokens{Input: *payload.Usage.Input, Output: *payload.Usage.Output, Cached: payload.Usage.Details.Cached}
+	if t.Kind == "model" && response.StatusCode >= 200 && response.StatusCode < 300 {
+		tokens = modelTokens(raw)
 	}
 	if err = Finish(id, tokens, response.StatusCode >= 200 && response.StatusCode < 300); err != nil {
 		return nil, err
 	}
 	response.Body = io.NopCloser(bytes.NewReader(raw))
 	return response, nil
+}
+
+func modelTokens(raw []byte) *Tokens {
+	type details struct {
+		Cached int64 `json:"cached_tokens"`
+	}
+	var payload struct {
+		Usage *struct {
+			Prompt        *int64  `json:"prompt_tokens"`
+			Completion    *int64  `json:"completion_tokens"`
+			PromptDetails details `json:"prompt_tokens_details"`
+			Input         *int64  `json:"input_tokens"`
+			Output        *int64  `json:"output_tokens"`
+			InputDetails  details `json:"input_tokens_details"`
+		} `json:"usage"`
+	}
+	if json.Unmarshal(raw, &payload) != nil || payload.Usage == nil {
+		return nil
+	}
+	u := payload.Usage
+	if u.Input != nil && u.Output != nil {
+		return &Tokens{Input: *u.Input, Output: *u.Output, Cached: u.InputDetails.Cached}
+	}
+	if u.Prompt != nil && u.Completion != nil {
+		return &Tokens{Input: *u.Prompt, Output: *u.Completion, Cached: u.PromptDetails.Cached}
+	}
+	return nil
 }
 
 func transportFailure(kind string, cause, recordErr error) error {

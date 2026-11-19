@@ -14,7 +14,7 @@ func protectionHash(suite *evaluation.FrozenSuite) string {
 	}
 	return hashJSON(cases)
 }
-func verifySuite(policy experience.Policy, suite *evaluation.FrozenSuite) error {
+func verifySuite(policy experience.Policy, suite *evaluation.FrozenSuite, checker string) error {
 	p, r := policy.Evaluation, suite.Rules
 	if suite.ProjectID != policy.ProjectID || p.SuiteVersion != suite.ID || p.ProtectionSet != protectionHash(suite) || p.HoldoutSet != suite.HoldoutHash || p.Grouping != "family" || p.MultipleComparison != "bonferroni" {
 		return ErrForbidden
@@ -35,7 +35,7 @@ func verifySuite(policy experience.Policy, suite *evaluation.FrozenSuite) error 
 		}
 	}
 	for _, c := range suite.Cases {
-		if c.CheckerHash != CheckerHash() {
+		if c.CheckerHash != checker || (checker != CheckerHash() && checker != ResearchReplayCheckerHash()) {
 			return ErrChecker
 		}
 	}

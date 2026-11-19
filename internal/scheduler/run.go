@@ -17,6 +17,7 @@ type RunDetails struct {
 	Fork      *workflow.Fork     `json:"fork,omitempty"`
 	RunSummary
 	Definition         *workflow.Definition `json:"definition,omitempty"`
+	Entry              *RunEntry            `json:"entry,omitempty"`
 	SourceRunID        string               `json:"source_run_id,omitempty"`
 	Nodes              []NodeRun            `json:"nodes"`
 	Events             []RunEvent           `json:"events"`
@@ -74,6 +75,10 @@ func (b Backend) GetRun(ctx context.Context, id string) (*RunDetails, error) {
 		return nil, err
 	}
 	if !out.LogsExpired && out.Definition != nil {
+		out.Entry, err = runEntry(ctx, b.Namespace(), record)
+		if err != nil {
+			return nil, err
+		}
 		out.Title = taskTitle(*out.Definition)
 		outcome := workflow.BusinessOutcome(*out.Definition, Outputs(out), out.Status)
 		out.Outcome = &outcome

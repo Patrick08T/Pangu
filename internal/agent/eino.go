@@ -30,11 +30,15 @@ func executeEino(ctx context.Context, input workflow.NodeInput) (workflow.NodeOu
 			return workflow.NodeOutput{}, &workflow.Failure{Kind: "parameter", Cause: err}
 		}
 	}
+	return runEinoSession(ctx, input, session, nil)
+}
+
+func runEinoSession(ctx context.Context, input workflow.NodeInput, session *research.Session, beforeCall func(context.Context) error) (workflow.NodeOutput, error) {
 	chat, err := einoModel(ctx, input)
 	if err != nil {
 		return workflow.NodeOutput{}, &workflow.Failure{Kind: "configuration", Cause: err}
 	}
-	chat = &tracedModel{base: chat, name: input.Node.Model}
+	chat = &tracedModel{base: chat, name: input.Node.Model, beforeCall: beforeCall}
 	settings := &adk.ChatModelAgentConfig{
 		Name: input.Node.ID, Description: input.Node.Description,
 		Instruction: outputInstruction(input.Node), Model: chat, MaxIterations: 1,
@@ -60,6 +64,23 @@ func executeEino(ctx context.Context, input workflow.NodeInput) (workflow.NodeOu
 		return result, reportErr
 	}
 	return out, err
+}
+
+func ExecuteResearchReplay(ctx context.Context, input workflow.NodeInput, beforeCall func(context.Context) error) (workflow.NodeOutput, error) {
+	session, brief, err := research.NewReplay(input)
+	if err != nil {
+		return workflow.NodeOutput{}, err
+	}
+	if err = input.Node.Validate(); err != nil {
+		return workflow.NodeOutput{}, err
+	}
+	input.Input = brief
+	input.Node.Instruction += input.Node.Handoff.Instruction()
+	out, err := runEinoSession(ctx, input, session, beforeCall)
+	if err != nil {
+		return workflow.NodeOutput{}, classify(err)
+	}
+	return workflow.NodeOutput{Text: string(out.Reports[0].Metadata)}, ctx.Err()
 }
 
 func runEino(ctx context.Context, a adk.Agent, input workflow.NodeInput) (workflow.NodeOutput, error) {
@@ -120,6 +141,9 @@ func einoModel(ctx context.Context, input workflow.NodeInput) (model.ToolCalling
 	config, err := modelConfig(input.Node, connection, key)
 	if err != nil {
 		return nil, err
+	}
+	if connection != nil && connection.API == "responses" {
+		return newResponsesModel(config, connection.ReasoningEffort), nil
 	}
 	return openai.NewChatModel(ctx, config)
 }

@@ -60,11 +60,13 @@ type Spec struct {
 }
 
 type Connection struct {
-	Provider  string          `json:"provider,omitempty"`
-	Price     *workflow.Price `json:"price,omitempty"`
-	BaseURL   string          `json:"base_url,omitempty"`
-	Model     string          `json:"model"`
-	SecretRef string          `json:"secret_ref,omitempty"`
+	API             string          `json:"api,omitempty"`
+	ReasoningEffort string          `json:"reasoning_effort,omitempty"`
+	Provider        string          `json:"provider,omitempty"`
+	Price           *workflow.Price `json:"price,omitempty"`
+	BaseURL         string          `json:"base_url,omitempty"`
+	Model           string          `json:"model"`
+	SecretRef       string          `json:"secret_ref,omitempty"`
 }
 
 type Flow struct {
@@ -121,13 +123,23 @@ var secretRef = regexp.MustCompile(`^PANGU_SECRET_[A-Z][A-Z0-9_]{0,63}$`)
 
 func (c Connection) Validate() error {
 	if c.Provider == "codex" {
-		if c.BaseURL != "" || c.SecretRef != "" || c.Price != nil || len(c.Model) > 128 || c.Model != "" && strings.TrimSpace(c.Model) == "" {
+		if c.BaseURL != "" || c.SecretRef != "" || c.Price != nil || c.API != "" || c.ReasoningEffort != "" || len(c.Model) > 128 || c.Model != "" && strings.TrimSpace(c.Model) == "" {
 			return errors.New("Codex 账号连接仅允许可选模型名，不接受 API 地址、凭据引用或单价")
 		}
 		return nil
 	}
 	if c.Provider != "" && c.Provider != "openai" {
 		return errors.New("模型连接 provider 必须为 openai 或 codex")
+	}
+	if c.API == "" && c.ReasoningEffort != "" || c.API != "" && c.API != "responses" {
+		return errors.New("API 配置无效，推理强度只能与 Responses API 一起设置")
+	}
+	if c.API == "responses" {
+		switch c.ReasoningEffort {
+		case "none", "minimal", "low", "medium", "high", "xhigh":
+		default:
+			return errors.New("Responses API 必须明确指定有效的推理强度")
+		}
 	}
 	if err := c.Price.Validate(); err != nil {
 		return err

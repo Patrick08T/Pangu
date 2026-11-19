@@ -21,16 +21,24 @@ export function ConnectionFields({value,change,disabled=false}:{value:string;cha
     if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw Error('对象');
     spec=parsed as Schema['CatalogSpec'];
     const connection=spec.connection;
-    if(connection!==undefined&&(!connection||typeof connection!=='object'||Array.isArray(connection)||['provider','base_url','model','secret_ref'].some(key=>connection[key as 'model']!==undefined&&typeof connection[key as 'model']!=='string')))throw Error('连接字段');
+    if(connection!==undefined&&(!connection||typeof connection!=='object'||Array.isArray(connection)||['provider','base_url','model','secret_ref','api','reasoning_effort'].some(key=>connection[key as 'model']!==undefined&&typeof connection[key as 'model']!=='string')))throw Error('连接字段');
   }catch{invalid=true;}
   const codex=spec.connection?.provider==='codex';
-  function update(key:'base_url'|'model'|'secret_ref',next:string){change(JSON.stringify({...spec,connection:{...spec.connection,[key]:next}},null,2));}
+  function update(key:'base_url'|'model'|'secret_ref'|'reasoning_effort',next:string){change(JSON.stringify({...spec,connection:{...spec.connection,[key]:next}},null,2));}
   function provider(next:string){change(JSON.stringify({...spec,connection:next==='codex'?{provider:'codex',model:''}:{provider:'openai',base_url:'',model:'',secret_ref:''}},null,2));}
+  function selectAPI(useResponses:boolean) {
+    const connection:Partial<Schema['Connection']>={...spec.connection};
+    delete connection.api;
+    delete connection.reasoning_effort;
+    change(JSON.stringify({...spec,connection:useResponses?{...connection,api:'responses',reasoning_effort:'medium'}:connection},null,2));
+  }
   return <><label><input type="checkbox" checked={advanced} disabled={disabled} onChange={e=>setAdvanced(e.target.checked)}/>高级连接 JSON</label>
     {advanced?<JSONField label="配置 JSON" value={value} onChange={change} disabled={disabled}/>:invalid?<p role="alert">配置必须是 JSON 对象，连接字段必须为字符串；请在高级编辑中修正。</p>:<>
       <label className="field">连接方式<select disabled={disabled} value={spec.connection?.provider??'openai'} onChange={e=>provider(e.target.value)}><option value="openai">模型 API</option><option value="codex">Worker 的 Codex 账号</option></select></label>
       <label className="field">模型名称<input required={!codex} maxLength={128} disabled={disabled} value={spec.connection?.model??''} onChange={e=>update('model',e.target.value)}/></label>
       {codex?<p className="muted">共用 Worker 已登录的专用 Codex 账号；模型留空使用 Codex 默认模型。工具由 Eino 执行，每次模型回复计入 Codex 会话预算，费用显示未知。</p>:<>
+      <label className="field">API 接口<select disabled={disabled} value={spec.connection?.api??''} onChange={e=>selectAPI(e.target.value==='responses')}><option value="">Chat Completions</option><option value="responses">Responses</option></select></label>
+      {spec.connection?.api==='responses'&&<label className="field">推理强度<select disabled={disabled} value={spec.connection.reasoning_effort??''} onChange={e=>update('reasoning_effort',e.target.value)}>{['none','minimal','low','medium','high','xhigh'].map(level=><option key={level}>{level}</option>)}</select></label>}
       <label className="field">模型服务地址<input type="url" required disabled={disabled} value={spec.connection?.base_url??''} onChange={e=>update('base_url',e.target.value)}/></label>
       <label className="field">服务端凭据引用<input required pattern="PANGU_SECRET_[A-Z][A-Z0-9_]{0,63}" disabled={disabled} value={spec.connection?.secret_ref??''} onChange={e=>update('secret_ref',e.target.value)}/></label>
       <p className="muted">填写维护者提供的 PANGU_SECRET_ 引用名，勿粘贴密钥。</p>

@@ -41,7 +41,7 @@ func (EvolutionEvidence) ReadExecutionTx(ctx context.Context, tx pgx.Tx, scope e
 			return result, err
 		}
 	}
-	result.NodeID, result.Text, err = evolutionFinalOutput(plan.Definition, outputs, result.Status == "completed")
+	result.NodeID, result.Text, err = evolutionResultOutput(plan, outputs, result.Status == "completed")
 	if err != nil {
 		return result, err
 	}
@@ -65,6 +65,18 @@ func (EvolutionEvidence) ReadExecutionTx(ctx context.Context, tx pgx.Tx, scope e
 		Start, Finish time.Time
 	}{result, outputs, started, *finished})
 	return result, nil
+}
+
+func evolutionResultOutput(plan evolution.ExecutionPlan, outputs map[string]workflow.NodeOutput, complete bool) (string, string, error) {
+	if plan.Environment.Backend != evolution.ResearchReplayBackend {
+		return evolutionFinalOutput(plan.Definition, outputs, complete)
+	}
+	node, err := evolution.ReplayCollector(plan.Definition)
+	out, ok := outputs[node.ID]
+	if err != nil || len(outputs) > 0 && (!ok || len(outputs) != 1) || complete && (!ok || out.Skipped) {
+		return "", "", evolution.ErrChecker
+	}
+	return node.ID, out.Text, nil
 }
 
 func evolutionFinalOutput(d workflow.Definition, outputs map[string]workflow.NodeOutput, complete bool) (string, string, error) {

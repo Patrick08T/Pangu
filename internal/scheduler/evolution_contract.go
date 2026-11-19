@@ -18,7 +18,7 @@ func evolutionArm(plan evolution.ExecutionPlan) evaluation.ExperimentArm {
 
 func evolutionValidatePlan(plan evolution.ExecutionPlan) error {
 	env, exp := plan.Environment, plan.Experiment
-	if !env.Enabled || env.Backend != "eino_json_v1" || env.Currency == "" || env.Hash == "" || env.Hash != exp.EnvironmentHash || env.ProjectID != plan.Definition.ProjectID || exp.LogicalProjectID != env.ProjectID || exp.Purpose != "evaluation" || exp.Generation != plan.Key.Generation {
+	if env.Currency == "" || env.Hash == "" || env.Hash != exp.EnvironmentHash || env.ProjectID != plan.Definition.ProjectID || exp.LogicalProjectID != env.ProjectID || exp.Purpose != "evaluation" || exp.Generation != plan.Key.Generation {
 		return evolution.ErrIsolation
 	}
 	if plan.Key.Arm != "baseline" && plan.Key.Arm != "candidate" {
@@ -36,13 +36,7 @@ func evolutionValidatePlan(plan evolution.ExecutionPlan) error {
 	if catalog.CompiledHash(plan.Definition) != evolutionArm(plan).CompiledHash {
 		return evolution.ErrConflict
 	}
-	for _, n := range plan.Definition.Nodes {
-		if n.Executor != "eino" || n.Role != "" || n.Policy != nil || n.Approval != nil || n.ConnectionVersion != env.ConnectionVersion {
-			return evolution.ErrIsolation
-		}
-	}
-	_, err := plan.Definition.Layers()
-	return err
+	return evolution.ValidateExecution(env, plan.Definition)
 }
 
 // The only model-visible structure is NodeInput. FrozenExperiment and checker data stay server-side.
@@ -63,6 +57,12 @@ func evolutionNodeInput(plan evolution.ExecutionPlan, input workflow.NodeInput, 
 	}
 	if !matched || input.ProjectID != plan.Definition.ProjectID || input.Input != plan.Definition.Input {
 		return workflow.NodeInput{}, evolution.ErrConflict
+	}
+	if plan.Environment.Backend == evolution.ResearchReplayBackend {
+		node, err := evolution.ReplayCollector(plan.Definition)
+		if err != nil || node.ID != input.Node.ID || len(input.Parents)+len(input.Parameters) > 0 || input.Iteration != nil {
+			return workflow.NodeInput{}, evolution.ErrIsolation
+		}
 	}
 	input.Experiences = plan.Memories
 	input.RequestID, input.RunID, input.NodeRunID = plan.RequestID, run, nodeRun

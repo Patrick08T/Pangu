@@ -50,7 +50,11 @@ func publishedEvidenceTx(ctx context.Context, tx pgx.Tx, scope Scope, intent *in
 	if err != nil {
 		return publishedEvidenceError(err)
 	}
-	return publishedEvidenceError(verifySuite(policy, suite))
+	checker := CheckerHash()
+	if len(suite.Cases) > 0 {
+		checker = suite.Cases[0].CheckerHash
+	}
+	return publishedEvidenceError(verifySuite(policy, suite, checker))
 }
 
 func publishedEvidenceError(err error) error {

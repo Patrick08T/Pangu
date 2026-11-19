@@ -35,17 +35,23 @@ func casePlanTx(ctx context.Context, tx pgx.Tx, scope Scope, key CaseKey, live *
 	if err != nil {
 		return nil, nil, err
 	}
-	if _, err = checkJSONResult(actual.Expected, actual.Criteria, actual.Expected); err != nil {
-		return nil, nil, err
-	}
 	definition := live.Baseline
 	if key.Arm == "candidate" {
 		definition = live.Candidate
 	}
 	definition.Input = actual.Input
+	if live.Environment.Backend == ResearchReplayBackend {
+		definition.Input, err = replayCaseInput(actual.Input, actual.Expected, actual.Criteria)
+	} else {
+		_, err = checkJSONResult(actual.Expected, actual.Criteria, actual.Expected)
+	}
+	if err != nil {
+		return nil, nil, err
+	}
 	if err = definition.ValidateInput(); err != nil {
 		return nil, nil, err
 	}
+	definition.Input = actual.Input
 	total := count * 2 * int64(live.Suite.Rules.Repeats)
 	inputHash, err := evaluation.ExecutionInputHash(live.Suite, live.Frozen, key.Arm, selected.ID, key.Repeat)
 	if err != nil {
@@ -55,7 +61,7 @@ func casePlanTx(ctx context.Context, tx pgx.Tx, scope Scope, key CaseKey, live *
 	if live.Frozen.Kind == "memory_benefit" && key.Arm == "baseline" {
 		plan.Memories = nil
 	}
-	if plan.MaxCalls < int64(len(definition.Nodes)) || plan.MaxTokens < 1 {
+	if plan.MaxCalls < int64(minimumCaseCalls(live.Environment, len(definition.Nodes))) || plan.MaxTokens < 1 {
 		return nil, nil, ErrBudget
 	}
 	return plan, actual, nil

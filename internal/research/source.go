@@ -85,13 +85,20 @@ func (s *Session) readWeb(ctx context.Context, id string) (string, error) {
 
 func (s *Session) readProject(ctx context.Context, index int) (string, error) {
 	path := s.brief.Documents[index]
+	if s.replayDocs != nil {
+		return s.recordDocument(index, path, []byte(s.replayDocs[index]))
+	}
 	data, commit, err := workspace.Document(ctx, s.input.RunID, path)
 	if err != nil {
 		return "", err
 	}
+	return s.recordDocument(index, path+"（原始基准 "+commit+"）", data)
+}
+
+func (s *Session) recordDocument(index int, title string, data []byte) (string, error) {
 	hash := sha256.Sum256(data)
 	id := fmt.Sprintf("d%d", index)
-	source := Source{ID: id, Title: path + "（原始基准 " + commit + "）", Read: true, RetrievedAt: time.Now().UTC(), SHA256: hex.EncodeToString(hash[:])}
+	source := Source{ID: id, Title: title, Read: true, RetrievedAt: time.Now().UTC(), SHA256: hex.EncodeToString(hash[:])}
 	s.sources[id] = source
 	s.sourceText[id] = string(data)
 	return sourceResult(source, string(data))

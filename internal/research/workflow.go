@@ -39,6 +39,7 @@ type Session struct {
 	evidence     []workflow.CommandEvidence
 	client       *http.Client
 	searchPublic func(context.Context, string) ([]SearchResult, error)
+	replayDocs   []string
 }
 
 func New(input workflow.NodeInput, search func(context.Context, string) ([]SearchResult, error)) (*Session, error) {
@@ -101,6 +102,9 @@ func (s *Session) invoke(ctx context.Context, name, args string) (string, error)
 }
 
 func (s *Session) dispatch(ctx context.Context, name, args string) (string, error) {
+	if s.replayDocs != nil && name != "read_project" && name != "register_report" {
+		return "", errors.New("回放不允许访问冻结资料以外的来源")
+	}
 	switch name {
 	case "search_public":
 		var a struct {

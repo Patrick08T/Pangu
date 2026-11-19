@@ -3993,7 +3993,7 @@ components:
         id: {type: string, format: uuid}
         project_id: {type: string, format: uuid}
         revision: {type: integer, format: int64}
-        backend: {type: string, enum: [eino_json_v1]}
+        backend: {type: string, enum: [eino_json_v1, eino_research_replay_v1]}
         connection_version: {type: string, format: uuid}
         enabled: {type: boolean}
         currency: {type: string}
@@ -4006,7 +4006,7 @@ components:
       properties:
         id: {type: string, format: uuid}
         expected_revision: {type: integer, format: int64, minimum: 0}
-        backend: {type: string, enum: [eino_json_v1]}
+        backend: {type: string, enum: [eino_json_v1, eino_research_replay_v1]}
         connection_version: {type: string, format: uuid}
         enabled: {type: boolean}
     EvolutionEnvironmentPage:
@@ -5558,6 +5558,15 @@ components:
           properties:
             successor: {$ref: '#/components/schemas/Submission'}
             fork: {$ref: '#/components/schemas/Fork'}
+            entry:
+              type: object
+              description: 已确认的业务提交来源及查询时的入口绑定状态。
+              required: [key, revision, workflow_id, current]
+              properties:
+                key: {type: string}
+                revision: {type: integer, minimum: 1}
+                workflow_id: {type: string}
+                current: {type: boolean}
             nodes:
               type: array
               items:
@@ -5871,6 +5880,12 @@ components:
         provider:
           type: string
           enum: [openai, codex]
+        api:
+          type: string
+          enum: [responses]
+        reasoning_effort:
+          type: string
+          enum: [none, minimal, low, medium, high, xhigh]
         price: {$ref: '#/components/schemas/Price'}
         base_url:
           type: string
@@ -5886,6 +5901,12 @@ components:
             provider: {enum: [openai]}
             model: {minLength: 1}
           required: [base_url, model, secret_ref]
+          oneOf:
+            - required: [api, reasoning_effort]
+            - not:
+                anyOf:
+                  - required: [api]
+                  - required: [reasoning_effort]
         - properties:
             provider: {enum: [codex]}
           required: [provider]
@@ -5894,7 +5915,9 @@ components:
               - required: [base_url]
               - required: [secret_ref]
               - required: [price]
-      description: openai 使用服务端凭据引用；codex 使用 Worker 专用登录且模型可留空，禁止配置 API 端点、凭据引用与单价。执行时读取原始来源，不返回密钥。
+              - required: [api]
+              - required: [reasoning_effort]
+      description: openai 使用服务端凭据引用，可配置 Responses API 和推理强度；codex 使用 Worker 专用登录且模型可留空，禁止配置 API 端点、凭据引用与单价。执行时读取原始来源，不返回密钥。
     FlowBinding:
       type: object
       additionalProperties: false
