@@ -1,0 +1,22 @@
+{
+  "question": "收集并整理金融、AI、游戏行业近期重要公开信息，生成中文简报。",
+  "audience": "关注金融、AI 和游戏行业的中文读者",
+  "market": "中国与全球",
+  "time_scope": "以 Asia/Singapore 时区的执行时间为基准，优先最近 24 小时发布的消息，证据不足可回看 72 小时并标注日期。分别核对公告发布日期和事件发生或生效日期。排除未来日期的公告，预告只写已经公布的安排。",
+  "context": "优先市场制度与重大事件、模型和产业发布、游戏发行与行业变化。金融固定入口为国家统计局、美联储和美国财政部，AI 为 Anthropic 和 Hugging Face，游戏为国家新闻出版署和 PlayStation 官方博客。",
+  "constraints": "逐行业读取适用的固定来源，使用对应的授权搜索词定位正式公告、研究或产品页面。索引页只支持其正文明确显示的标题、日期和事实，详情以读到的原文为准。核对原始发布者，按事件去重。每栏最多三条，区分事实、影响判断和下一步观察。来源不可读或窗口内无可靠消息时注明覆盖缺口。报告可公开阅读，避免接收人信息、传闻和个性化投资建议。",
+  "public_queries": [
+    "金融 最近宏观数据 利率政策 发布公告 (site:stats.gov.cn OR site:federalreserve.gov OR site:home.treasury.gov/news/press-releases OR site:bls.gov/news.release OR site:pbc.gov.cn)",
+    "AI 最新模型发布 技术公告 官方原文 (site:openai.com OR site:anthropic.com OR site:qwen.ai OR site:deepseek.com OR site:huggingface.co)",
+    "游戏 最新发行 版号 上市游戏公司业绩 官方公告 (site:nppa.gov.cn OR site:blog.playstation.com OR site:tencent.com OR site:nintendo.co.jp)"
+  ],
+  "urls": [
+    "https://www.stats.gov.cn/sj/zxfb/",
+    "https://www.federalreserve.gov/newsevents.htm",
+    "https://home.treasury.gov/news/press-releases",
+    "https://www.anthropic.com/news",
+    "https://huggingface.co/blog",
+    "https://www.nppa.gov.cn/bsfw/jggs/",
+    "https://blog.playstation.com/"
+  ]
+}

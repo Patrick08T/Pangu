@@ -53,6 +53,10 @@ Eino 模型连接可选择 `provider: codex`，共用 Worker 的专用 Codex 登
 
 行为追踪通过固定源码的 [Codex 受控构建](runtime/codex/README.md) 和 Eino 调用边界采集。任务详情支持暂停后续节点、继续、单步放行一个节点，以及按节点/类型/状态查看和导出 trace；凭据在入库前脱敏。用 `scripts/codex-build.ps1` 构建，不覆盖系统 Codex。详见 [设计与验收](docs/行为追踪与节点调试设计-2026-10-28.md)。
 
+## 示例项目
+
+[千里眼](examples/qianliyan/README.md) 演示如何用 Eino Agent 采集金融、AI 和游戏行业公开信息，输出 HTML 简报，并将同一份报告交接给飞书和微信公众号。示例包含三角色工作流蓝本、调研输入和渠道交付说明。
+
 ## API 与执行边界
 
 完整接口和类型见 [OpenAPI](api/openapi.yaml)、[运行契约](specs/运行契约.md)。核心入口包括运行、请求回执、配置对象/版本、Cron、项目/成员、产物、Token 和审计。
